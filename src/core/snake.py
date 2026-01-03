@@ -1,31 +1,37 @@
-from src.core.types import Point, Direction
+from src.core.types import Direction, Point
 
 class Snake:
-    def __init__(self, start_x: int, start_y: int):
-        self.head = Point(start_x, start_y)
-        self.body = [self.head]
-        self.direction = Direction.RIGHT
-
-    def set_direction(self, new_direction: Direction):
-        if len(self.body) > 1:
-            if new_direction == Direction.RIGHT and self.direction == Direction.LEFT: return
-            if new_direction == Direction.LEFT and self.direction == Direction.RIGHT: return
-            if new_direction == Direction.UP and self.direction == Direction.DOWN: return
-            if new_direction == Direction.DOWN and self.direction == Direction.UP: return
-        
-        self.direction = new_direction
-
-    def move(self, block_size: int):
-        x = self.head.x
-        y = self.head.y
-
-        if self.direction == Direction.RIGHT:
-            x += block_size
-        elif self.direction == Direction.LEFT:
-            x -= block_size
-        elif self.direction == Direction.DOWN:
-            y += block_size
-        elif self.direction == Direction.UP:
-            y -= block_size
-
+    def __init__(self, x, y, team_config, initial_length=3, block_size=20):
         self.head = Point(x, y)
+        self.body = []
+        for i in range(initial_length):
+            self.body.append(Point(x - (i * block_size), y))
+            
+        self.direction = Direction.RIGHT
+        self.team_name = team_config.name
+        self.color = team_config.color
+        self.is_alive = True
+        self.score = 0
+        self.steps_alive = 0
+        self.deaths = 0
+        self.brain_type = team_config.brain_type
+        self.reward_mode = team_config.reward_mode
+
+    def set_direction(self, direction):
+        if not self.is_alive: return
+        if (direction == Direction.UP and self.direction == Direction.DOWN) or \
+           (direction == Direction.DOWN and self.direction == Direction.UP) or \
+           (direction == Direction.LEFT and self.direction == Direction.RIGHT) or \
+           (direction == Direction.RIGHT and self.direction == Direction.LEFT):
+            return
+        self.direction = direction
+
+    def move(self, block_size):
+        if not self.is_alive: return
+        x, y = self.head.x, self.head.y
+        if self.direction == Direction.RIGHT: x += block_size
+        elif self.direction == Direction.LEFT: x -= block_size
+        elif self.direction == Direction.DOWN: y += block_size
+        elif self.direction == Direction.UP: y -= block_size
+        self.head = Point(x, y)
+        self.steps_alive += 1

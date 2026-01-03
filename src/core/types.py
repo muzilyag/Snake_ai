@@ -1,23 +1,32 @@
-from enum import Enum
+from collections import namedtuple
 from dataclasses import dataclass
-from typing import List, Optional
+from typing import List, Dict
 
-class Direction(Enum):
-    UP = (0, -1)
-    DOWN = (0, 1)
-    LEFT = (-1, 0)
-    RIGHT = (1, 0)
+Point = namedtuple('Point', 'x, y')
 
-@dataclass(frozen=True)
-class Point:
-    x: int
-    y: int
+class Direction:
+    UP = 1
+    RIGHT = 2
+    DOWN = 3
+    LEFT = 4
+
+@dataclass
+class TeamStats:
+    record: int = 0
+    deaths: int = 0
+    current_score: int = 0
+    generation: int = 1
+
+@dataclass
+class GlobalStats:
+    total_iterations: int
+    total_time: float
+    total_deaths: int
 
 @dataclass
 class GameStateDTO:
-    """Слепок состояния игры для отправки в UI или AI"""
-    snake_body: List[Point]
-    food: Point
-    score: int
+    snakes: List
+    foods: List[Point]
+    global_stats: GlobalStats
+    team_stats: Dict[str, TeamStats]
     is_game_over: bool
-    iteration: int

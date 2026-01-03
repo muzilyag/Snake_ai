@@ -1,72 +1,87 @@
 import torch
 import numpy as np
-from src.core.interfaces import MoveStrategy
 from src.core.types import Direction, Point
 
-class AIStrategy(MoveStrategy):
-    def __init__(self, model):
-        self.model = model
+class MultiAgentStrategy:
+    def __init__(self, config):
+        self.config = config
 
-    def get_next_move(self, state_dto):
-        sensors = self._get_sensors(state_dto)
+    def get_action(self, model, snake, state_dto):
+        sensors = self._get_sensors(snake, state_dto)
+        state_tensor = torch.tensor(sensors, dtype=torch.float).unsqueeze(0)
+        
         with torch.no_grad():
-            prediction = self.model(sensors)
+            prediction = model(state_tensor)
             action_idx = torch.argmax(prediction).item()
-        
-        direction = self._transform_action(state_dto, action_idx)
-        return direction, action_idx
+            
+        move = self._transform_action(snake, action_idx)
+        return move, action_idx, sensors
 
-    def _get_sensors(self, state):
-        head = state.snake_body[0]
-        cur_dir = self._get_current_direction(state)
+    def _get_sensors(self, snake, state_dto):
+        head = snake.head
         
-        def get_point(d):
-            return Point(head.x + d[0], head.y + d[1])
+        point_l = Point(head.x - 20, head.y)
+        point_r = Point(head.x + 20, head.y)
+        point_u = Point(head.x, head.y - 20)
+        point_d = Point(head.x, head.y + 20)
 
-        dir_map = {
-            Direction.UP:    (0, -20),
-            Direction.DOWN:  (0, 20),
-            Direction.LEFT:  (-20, 0),
-            Direction.RIGHT: (20, 0)
-        }
-        
-        cw = [Direction.UP, Direction.RIGHT, Direction.DOWN, Direction.LEFT]
-        idx = cw.index(cur_dir)
-        
-        d_straight = dir_map[cur_dir]
-        d_right = dir_map[cw[(idx + 1) % 4]]
-        d_left = dir_map[cw[(idx - 1) % 4]]
+        dir_l = snake.direction == Direction.LEFT
+        dir_r = snake.direction == Direction.RIGHT
+        dir_u = snake.direction == Direction.UP
+        dir_d = snake.direction == Direction.DOWN
 
-        def is_unsafe(p):
-            if p.x < 0 or p.x >= 640 or p.y < 0 or p.y >= 480:
-                return 1
-            if p in state.snake_body:
-                return 1
-            return 0
+        state = [
+            (dir_r and self._is_collision(point_r, state_dto)) or 
+            (dir_l and self._is_collision(point_l, state_dto)) or 
+            (dir_u and self._is_collision(point_u, state_dto)) or 
+            (dir_d and self._is_collision(point_d, state_dto)),
 
-        sensors = [
-            is_unsafe(get_point(d_straight)),
-            is_unsafe(get_point(d_right)),
-            is_unsafe(get_point(d_left)),
-            cur_dir == Direction.LEFT, cur_dir == Direction.RIGHT,
-            cur_dir == Direction.UP, cur_dir == Direction.DOWN,
-            state.food.x < head.x, state.food.x > head.x,
-            state.food.y < head.y, state.food.y > head.y
+            (dir_u and self._is_collision(point_r, state_dto)) or 
+            (dir_d and self._is_collision(point_l, state_dto)) or 
+            (dir_l and self._is_collision(point_u, state_dto)) or 
+            (dir_r and self._is_collision(point_d, state_dto)),
+
+            (dir_d and self._is_collision(point_r, state_dto)) or 
+            (dir_u and self._is_collision(point_l, state_dto)) or 
+            (dir_r and self._is_collision(point_u, state_dto)) or 
+            (dir_l and self._is_collision(point_d, state_dto)),
+
+            dir_l,
+            dir_r,
+            dir_u,
+            dir_d,
         ]
-        return np.array(sensors, dtype=float)
+        
+        food = self._get_closest_food(snake, state_dto.foods)
+        state.append(food.x < head.x)
+        state.append(food.x > head.x)
+        state.append(food.y < head.y)
+        state.append(food.y > head.y)
+        
+        return np.array(state, dtype=float)
 
-    def _get_current_direction(self, state):
-        if len(state.snake_body) < 2: return Direction.RIGHT
-        h, n = state.snake_body[0], state.snake_body[1]
-        if h.x > n.x: return Direction.RIGHT
-        if h.x < n.x: return Direction.LEFT
-        if h.y > n.y: return Direction.DOWN
-        return Direction.UP
+    def _get_closest_food(self, snake, foods):
+        if not foods: return Point(-1, -1)
+        closest = min(foods, key=lambda f: (snake.head.x - f.x)**2 + (snake.head.y - f.y)**2)
+        return closest
 
-    def _transform_action(self, state, action_idx):
-        cur_dir = self._get_current_direction(state)
-        cw = [Direction.UP, Direction.RIGHT, Direction.DOWN, Direction.LEFT]
-        idx = cw.index(cur_dir)
-        if action_idx == 0: return cur_dir
-        if action_idx == 1: return cw[(idx + 1) % 4]
-        return cw[(idx - 1) % 4]
+    def _is_collision(self, pt, state):
+        if pt.x < 0 or pt.x >= self.config.map_width_px or \
+           pt.y < 0 or pt.y >= self.config.map_height_px:
+            return True
+        
+        for s in state.snakes:
+            if s.is_alive and pt in s.body:
+                return True
+        return False
+
+    def _transform_action(self, snake, action_idx):
+        clock_wise = [Direction.RIGHT, Direction.DOWN, Direction.LEFT, Direction.UP]
+        idx = clock_wise.index(snake.direction)
+
+        if action_idx == 0: 
+            return clock_wise[idx]
+        elif action_idx == 1: 
+            return clock_wise[(idx + 1) % 4]
+        else: 
+            return clock_wise[(idx - 1) % 4]

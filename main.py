@@ -1,77 +1,91 @@
-import random
 import torch
+import random
 from src.config import SETTINGS
 from src.core.engine import GameEngine
 from src.ui.pygame_ui import PygameRenderer
 from src.ai.model import SnakeNet
 from src.ai.rl_trainer import RLTrainer
 from src.ai.ga_trainer import GATrainer
-from src.input.strategies import AIStrategy
-
-MODE = "RL"
+from src.input.strategies import MultiAgentStrategy
 
 def main():
     ui = PygameRenderer(SETTINGS)
-    model = SnakeNet()
+    engine = GameEngine(SETTINGS)
+    strategy = MultiAgentStrategy(SETTINGS)
+    
+    models_pool = {t.name: [] for t in SETTINGS.teams}
+    rl_trainers = {}
+    ga_trainers = {}
+    last_known_records = {t.name: 0 for t in SETTINGS.teams}
+    
+    for team in SETTINGS.teams:
+        if team.brain_type == "RL":
+            m = SnakeNet()
+            models_pool[team.name] = [m for _ in range(team.count)]
+            rl_trainers[team.name] = RLTrainer(m)
+        else:
+            ga_trainers[team.name] = GATrainer(SnakeNet)
+            models_pool[team.name] = [SnakeNet() for _ in range(team.count)]
 
-    if MODE == "RL":
-        trainer = RLTrainer(model)
-        strategy = AIStrategy(model)
-        engine = GameEngine(SETTINGS, strategy)
-        epsilon = 80
+    epsilon = 80
+    current_fps = SETTINGS.fps_train
+    
+    print("--- Процесс пошел ---")
+
+    while True:
+        inputs = ui.get_input()
+        if inputs['quit']: break
+        if inputs['toggle_speed']:
+            current_fps = SETTINGS.fps_watch if current_fps == SETTINGS.fps_train else SETTINGS.fps_train
+
+        state_dto = engine.get_state()
+        indices = []
+        old_states = []
         
-        while True:
-            ui.process_events()
-            state_old = strategy._get_sensors(engine.get_state())
+        for i, snake in enumerate(engine.snakes):
+            model = models_pool[snake.team_name][i % len(models_pool[snake.team_name])]
+            sensors = strategy._get_sensors(snake, state_dto)
+            old_states.append(sensors)
             
-            if random.randint(0, 100) < epsilon:
+            if snake.brain_type == "RL" and random.randint(0, 100) < epsilon:
                 action_idx = random.randint(0, 2)
-                move = strategy._transform_action(engine.get_state(), action_idx)
-                engine.snake.set_direction(move)
-                reward, done, _ = engine.step_manual(action_idx)
             else:
-                reward, done, action_idx = engine.step()
-
-            state_new = strategy._get_sensors(engine.get_state())
-            trainer.train_step(state_old, action_idx, reward, state_new, done)
-
-            if done:
-                engine.reset_game()
-                if epsilon > 5: epsilon -= 0.2
+                _, action_idx, _ = strategy.get_action(model, snake, state_dto)
             
-            ui.render(engine.get_state())
+            indices.append(action_idx)
+            snake.set_direction(strategy._transform_action(snake, action_idx))
 
-    elif MODE == "GA":
-        POP_SIZE = 40
-        ga_trainer = GATrainer(SnakeNet)
-        population = [SnakeNet() for _ in range(POP_SIZE)]
+        results, _ = engine.step(indices) 
+        new_state_dto = engine.get_state()
         
-        for gen in range(1000):
-            fitness_results = []
-            for i, net in enumerate(population):
-                strat = AIStrategy(net)
-                eng = GameEngine(SETTINGS, strat)
-                
-                for _ in range(500):
-                    ui.process_events()
-                    reward, done, _ = eng.step()
-                    if i % 10 == 0:
-                        ui.render(eng.get_state())
-                    if done: break
-                
-                fitness = (eng.score * 1000) + eng.iteration
-                fitness_results.append((net, fitness))
+        for i, snake in enumerate(engine.snakes):
+            reward, done, score = results[i]
+            
+            # Вывод в консоль только при новом рекорде команды
+            if engine.team_stats[snake.team_name].record > last_known_records[snake.team_name]:
+                last_known_records[snake.team_name] = engine.team_stats[snake.team_name].record
+                print(f"РЕКОРД! [{snake.team_name}] Счет: {last_known_records[snake.team_name]} (Мозг: {snake.brain_type})")
 
-            fitness_results.sort(key=lambda x: x[1], reverse=True)
-            elites = [x[0] for x in fitness_results[:8]]
-            new_pop = elites[:]
-            
-            while len(new_pop) < POP_SIZE:
-                p1, p2 = random.sample(elites, 2)
-                child = ga_trainer.crossover(p1, p2)
-                new_pop.append(ga_trainer.mutate(child, mutation_rate=0.15))
-            
-            population = new_pop
+            if snake.brain_type == "RL":
+                trainer = rl_trainers[snake.team_name]
+                new_sensors = strategy._get_sensors(snake, new_state_dto)
+                trainer.train_step(old_states[i], indices[i], reward, new_sensors, done)
+                if done and epsilon > 5: epsilon -= 0.05
+            else:
+                if done:
+                    # Упрощенный Fitness: яблоки + время жизни
+                    fitness = (snake.score * 500) + snake.steps_alive
+                    
+                    ga_manager = ga_trainers[snake.team_name]
+                    # Сохраняем результат. Если это новый чемпион команды - ga_manager это запомнит
+                    ga_manager.save_candidate(models_pool[snake.team_name][i % len(SETTINGS.teams)], fitness)
+                    
+                    # Мгновенно заменяем умершую змейку мутировавшим потомком текущего чемпиона
+                    models_pool[snake.team_name][i % len(SETTINGS.teams)] = ga_manager.get_offspring()
+                    engine.team_stats[snake.team_name].generation += 1
+
+        ui.render(new_state_dto)
+        if current_fps > 0: ui.clock.tick(current_fps)
 
 if __name__ == "__main__":
     main()
