@@ -1,12 +1,6 @@
 import torch
 import random
-from src.config import SETTINGS
-from src.core.engine import GameEngine
-from src.ui.pygame_ui import PygameRenderer
-from src.ai.model import SnakeNet
-from src.ai.rl_trainer import RLTrainer
-from src.ai.ga_trainer import GATrainer
-from src.input.strategies import MultiAgentStrategy
+from src import *
 
 def main():
     ui = PygameRenderer(SETTINGS)

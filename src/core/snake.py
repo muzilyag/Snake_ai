@@ -13,6 +13,7 @@ class Snake:
         self.is_alive = True
         self.score = 0
         self.steps_alive = 0
+        self.steps_since_last_food = 0
         self.deaths = 0
         self.brain_type = team_config.brain_type
         self.reward_mode = team_config.reward_mode
@@ -35,3 +36,4 @@ class Snake:
         elif self.direction == Direction.UP: y -= block_size
         self.head = Point(x, y)
         self.steps_alive += 1
+        self.steps_since_last_food += 1

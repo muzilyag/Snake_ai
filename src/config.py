@@ -2,6 +2,18 @@ from dataclasses import dataclass, field
 from typing import List
 
 @dataclass
+class RewardConfig:
+    starvation_penalty: float = -100.0
+    food_reward_base: float = 20.0
+    death_penalty_base: float = -20.0
+    
+    step_closer: float = 1.0
+    step_farther: float = -1.5
+    
+    dynamic_velocity_multiplier: float = 2.0 
+    wall_proximity_penalty: float = -0.5
+
+@dataclass
 class Color:
     BACKGROUND = (255, 255, 255)
     GRID = (230, 230, 230)
@@ -19,23 +31,20 @@ class TeamConfig:
 
 @dataclass
 class GameConfig:
-    grid_width: int = 40
-    grid_height: int = 40
+    grid_width: int = 20
+    grid_height: int = 20
     block_size: int = 20
     sidebar_width: int = 300
     fps_train: int = 0
     fps_watch: int = 15
     food_count: int = 6
-    initial_snake_length: int = 3
-    
-    dynamic_death_penalty: float = -10.0
-    dynamic_food_reward: float = 15.0
-    
+    initial_snake_length: int = 1
+    max_steps_without_food: int = 200
+    rewards: RewardConfig = field(default_factory=RewardConfig)
     teams: List[TeamConfig] = field(default_factory=lambda: [
         TeamConfig("Green Linear", 2, (0, 180, 0), "RL", "linear"),
         TeamConfig("Blue Dynamic", 2, (0, 0, 180), "RL", "dynamic")
     ])
-    
     colors: Color = field(default_factory=Color)
 
     def __post_init__(self):

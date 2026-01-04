@@ -1,8 +1,8 @@
 import random
 import time
 import math
-from src.core.types import Point, GameStateDTO, GlobalStats, TeamStats
-from src.core.snake import Snake
+from .types import Point, GameStateDTO, GlobalStats, TeamStats
+from .snake import Snake
 
 class GameEngine:
     def __init__(self, config):
@@ -13,11 +13,9 @@ class GameEngine:
         self.snakes = []
         self.foods = []
         self.team_stats = {t.name: TeamStats() for t in config.teams}
-        
         for team in self.config.teams:
             for _ in range(team.count):
                 self.snakes.append(self._create_initial_snake(team))
-        
         while len(self.foods) < self.config.food_count:
             self._place_food()
 
@@ -41,6 +39,7 @@ class GameEngine:
                 snake.is_alive = True
                 snake.score = 0
                 snake.steps_alive = 0
+                snake.steps_since_last_food = 0
                 break
 
     def _place_food(self):
@@ -56,21 +55,38 @@ class GameEngine:
             attempts += 1
 
     def _calculate_reward(self, snake, dist_before, dist_after, event_type):
+        r = self.config.rewards
+        
         if snake.reward_mode == "linear":
-            if event_type == 'death': return -15.0
-            if event_type == 'food':  return 20.0
-            return 1.0 if dist_after < dist_before else -1.5
+            if event_type == 'starve': return r.starvation_penalty
+            if event_type == 'death': return r.death_penalty_base
+            if event_type == 'food':  return r.food_reward_base
+            return r.step_closer if dist_after < dist_before else r.step_farther
 
         elif snake.reward_mode == "dynamic":
-            length = len(snake.body)
+            if event_type == 'starve':
+                return r.starvation_penalty
+            
             if event_type == 'death':
-                return -10.0 - (length * 0.3)
+                return -10.0 - (len(snake.body) * 0.5)
+            
             if event_type == 'food':
-                return 15.0 + (length * 0.5)
+                return 25.0
+            
             if event_type == 'move':
-                step_reward = 1.0 if dist_after < dist_before else -1.5
-                hunger_penalty = -(length * 0.005)
-                return step_reward + hunger_penalty
+                change = dist_before - dist_after
+                velocity_reward = change * r.dynamic_velocity_multiplier
+                
+                wall_penalty = 0.0
+                hx, hy = snake.head.x, snake.head.y
+                w, h = self.config.map_width_px, self.config.map_height_px
+                bs = self.config.block_size
+                
+                if hx < bs * 2 or hx > w - bs * 2 or hy < bs * 2 or hy > h - bs * 2:
+                    wall_penalty = r.wall_proximity_penalty
+                
+                return velocity_reward + wall_penalty
+                
         return 0.0
 
     def step(self, actions):
@@ -78,16 +94,20 @@ class GameEngine:
         results = []
         for t_name in self.team_stats:
             self.team_stats[t_name].current_score = 0
-
         for i, snake in enumerate(self.snakes):
             dist_before = self._get_closest_food_dist(snake)
             snake.move(self.config.block_size)
             snake.body.insert(0, snake.head)
             reward = 0
             done = False
-            
             if self._check_collision(snake):
                 reward = self._calculate_reward(snake, 0, 0, 'death')
+                done = True
+                self.total_deaths += 1
+                self.team_stats[snake.team_name].deaths += 1
+                self._respawn_snake_at_random(snake)
+            elif snake.steps_since_last_food >= self.config.max_steps_without_food:
+                reward = self._calculate_reward(snake, 0, 0, 'starve')
                 done = True
                 self.total_deaths += 1
                 self.team_stats[snake.team_name].deaths += 1
@@ -95,6 +115,7 @@ class GameEngine:
             elif snake.head in self.foods:
                 reward = self._calculate_reward(snake, 0, 0, 'food')
                 snake.score += 1
+                snake.steps_since_last_food = 0
                 if snake.score > self.team_stats[snake.team_name].record:
                     self.team_stats[snake.team_name].record = snake.score
                 self.foods.remove(snake.head)
@@ -103,7 +124,6 @@ class GameEngine:
                 dist_after = self._get_closest_food_dist(snake)
                 reward = self._calculate_reward(snake, dist_before, dist_after, 'move')
                 snake.body.pop()
-            
             self.team_stats[snake.team_name].current_score += snake.score
             results.append((reward, done, snake.score))
         return results, False
