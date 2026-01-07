@@ -1,8 +1,8 @@
 import random
 import time
 import math
-from .types import Point, GameStateDTO, GlobalStats, TeamStats
-from .snake import Snake
+from src.core.types import Point, GameStateDTO, GlobalStats, TeamStats
+from src.core.snake import Snake
 
 class GameEngine:
     def __init__(self, config):
@@ -12,10 +12,13 @@ class GameEngine:
         self.total_deaths = 0
         self.snakes = []
         self.foods = []
+        # Инициализируем TeamStats, используя dataclass
         self.team_stats = {t.name: TeamStats() for t in config.teams}
+        
         for team in self.config.teams:
             for _ in range(team.count):
                 self.snakes.append(self._create_initial_snake(team))
+        
         while len(self.foods) < self.config.food_count:
             self._place_food()
 
@@ -64,68 +67,94 @@ class GameEngine:
             return r.step_closer if dist_after < dist_before else r.step_farther
 
         elif snake.reward_mode == "dynamic":
-            if event_type == 'starve':
-                return r.starvation_penalty
-            
-            if event_type == 'death':
-                return -10.0 - (len(snake.body) * 0.5)
-            
-            if event_type == 'food':
-                return 25.0
+            if event_type == 'starve': return r.starvation_penalty
+            if event_type == 'death': return -10.0 - (len(snake.body) * 0.5)
+            if event_type == 'food': return 25.0
             
             if event_type == 'move':
                 change = dist_before - dist_after
-                velocity_reward = change * r.dynamic_velocity_multiplier
+                vel_reward = change * r.dynamic_velocity_multiplier
                 
-                wall_penalty = 0.0
-                hx, hy = snake.head.x, snake.head.y
-                w, h = self.config.map_width_px, self.config.map_height_px
+                danger_penalty = 0.0
                 bs = self.config.block_size
+                # Проверка 4 соседних клеток на опасность
+                neighbors = [
+                    Point(snake.head.x, snake.head.y - bs),
+                    Point(snake.head.x, snake.head.y + bs),
+                    Point(snake.head.x - bs, snake.head.y),
+                    Point(snake.head.x + bs, snake.head.y)
+                ]
                 
-                if hx < bs * 2 or hx > w - bs * 2 or hy < bs * 2 or hy > h - bs * 2:
-                    wall_penalty = r.wall_proximity_penalty
-                
-                return velocity_reward + wall_penalty
+                for n in neighbors:
+                    is_wall = (n.x < 0 or n.x >= self.config.map_width_px or 
+                               n.y < 0 or n.y >= self.config.map_height_px)
+                    is_body = False
+                    if not is_wall:
+                        for s in self.snakes:
+                            if s.is_alive and n in s.body:
+                                is_body = True
+                                break
+                    
+                    if is_wall or is_body:
+                        danger_penalty += r.danger_sensing_penalty
+
+                return vel_reward + danger_penalty + r.survival_bonus
                 
         return 0.0
 
     def step(self, actions):
         self.iteration += 1
         results = []
+        
+        # Сбрасываем текущий счет (current_score) для отрисовки, но не рекорд
         for t_name in self.team_stats:
             self.team_stats[t_name].current_score = 0
+            
         for i, snake in enumerate(self.snakes):
             dist_before = self._get_closest_food_dist(snake)
             snake.move(self.config.block_size)
             snake.body.insert(0, snake.head)
+            
             reward = 0
             done = False
+            
+            # --- Логика коллизий и наград ---
             if self._check_collision(snake):
                 reward = self._calculate_reward(snake, 0, 0, 'death')
                 done = True
                 self.total_deaths += 1
                 self.team_stats[snake.team_name].deaths += 1
                 self._respawn_snake_at_random(snake)
+                
             elif snake.steps_since_last_food >= self.config.max_steps_without_food:
                 reward = self._calculate_reward(snake, 0, 0, 'starve')
                 done = True
                 self.total_deaths += 1
                 self.team_stats[snake.team_name].deaths += 1
                 self._respawn_snake_at_random(snake)
+                
             elif snake.head in self.foods:
                 reward = self._calculate_reward(snake, 0, 0, 'food')
                 snake.score += 1
                 snake.steps_since_last_food = 0
+                
+                # Обновляем рекорд команды
                 if snake.score > self.team_stats[snake.team_name].record:
                     self.team_stats[snake.team_name].record = snake.score
+                    
                 self.foods.remove(snake.head)
                 self._place_food()
+                
             else:
                 dist_after = self._get_closest_food_dist(snake)
                 reward = self._calculate_reward(snake, dist_before, dist_after, 'move')
                 snake.body.pop()
+            
+            # Обновляем текущий счет команды (суммарный по живым змейкам)
             self.team_stats[snake.team_name].current_score += snake.score
+            
             results.append((reward, done, snake.score))
+            
         return results, False
 
     def _get_closest_food_dist(self, snake):
@@ -142,5 +171,10 @@ class GameEngine:
         return False
 
     def get_state(self):
-        g_stats = GlobalStats(self.iteration, time.time() - self.start_time, self.total_deaths)
+        # Создаем GlobalStats, используя поля из types.py (total_iterations, total_time, total_deaths)
+        g_stats = GlobalStats(
+            total_iterations=self.iteration, 
+            total_time=time.time() - self.start_time, 
+            total_deaths=self.total_deaths
+        )
         return GameStateDTO(self.snakes, self.foods, g_stats, self.team_stats, False)

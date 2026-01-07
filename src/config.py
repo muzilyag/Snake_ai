@@ -7,11 +7,17 @@ class RewardConfig:
     food_reward_base: float = 20.0
     death_penalty_base: float = -20.0
     
+    # Linear params
     step_closer: float = 1.0
     step_farther: float = -1.5
     
+    # Dynamic params
     dynamic_velocity_multiplier: float = 2.0 
     wall_proximity_penalty: float = -0.5
+    
+    # New params for smarter AI
+    danger_sensing_penalty: float = -0.5
+    survival_bonus: float = 0.01
 
 @dataclass
 class Color:
@@ -38,12 +44,12 @@ class GameConfig:
     fps_train: int = 0
     fps_watch: int = 15
     food_count: int = 6
-    initial_snake_length: int = 1
+    initial_snake_length: int = 3
     max_steps_without_food: int = 200
     rewards: RewardConfig = field(default_factory=RewardConfig)
     teams: List[TeamConfig] = field(default_factory=lambda: [
         TeamConfig("Green Linear", 2, (0, 180, 0), "RL", "linear"),
-        TeamConfig("Blue Dynamic", 2, (0, 0, 180), "RL", "dynamic")
+        TeamConfig("Blue Dynamic", 2, (0, 0, 180), "RL", "dynamic"),
     ])
     colors: Color = field(default_factory=Color)
 

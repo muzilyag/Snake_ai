@@ -29,6 +29,7 @@ class PygameRenderer:
         for f in state.foods:
             pygame.draw.rect(self.display, self.config.colors.FOOD, (f.x, f.y, self.config.block_size, self.config.block_size))
         for snake in state.snakes:
+            if not snake.is_alive: continue
             for pt in snake.body:
                 pygame.draw.rect(self.display, snake.color, (pt.x, pt.y, self.config.block_size, self.config.block_size))
 
@@ -38,27 +39,50 @@ class PygameRenderer:
         x, y = menu_x + 10, 10
         
         lines = [
-            ("=== GLOBAL STATS ===", True),
+            ("GLOBAL STATS", True),
             (f"Iterations: {state.global_stats.total_iterations}", False),
             (f"Deaths: {state.global_stats.total_deaths}", False),
             ("", False),
-            ("=== TEAMS ===", True)
+            ("TEAMS", True)
         ]
         
-        for name, stats in state.team_stats.items():
-            lines.append((f"[{name}]", True))
-            lines.append((f"  Current Score: {stats.current_score}", False))
-            lines.append((f"  Team Record: {stats.record}", False))
-            lines.append((f"  Team Deaths: {stats.deaths}", False))
-            if "GA" in name or any(t.name == name and t.brain_type == "GA" for t in self.config.teams):
-                lines.append((f"  Generation: {stats.generation}", False))
-            lines.append(("", False))
-
         for text, is_bold in lines:
             f = self.font_bold if is_bold else self.font
-            surf = f.render(text, True, self.config.colors.TEXT)
-            self.display.blit(surf, (x, y))
+            self.display.blit(f.render(text, True, self.config.colors.TEXT), (x, y))
             y += 22
+
+        for name, stats in state.team_stats.items():
+            # Находим конфиг команды, чтобы проверить brain_type
+            team_conf = next((t for t in self.config.teams if t.name == name), None)
+            
+            self.display.blit(self.font_bold.render(f"[{name}]", True, self.config.colors.TEXT), (x, y))
+            y += 20
+            self.display.blit(self.font.render(f"  Score: {stats.current_score}", True, self.config.colors.TEXT), (x, y))
+            y += 18
+            self.display.blit(self.font.render(f"  Rec: {stats.record}", True, self.config.colors.TEXT), (x, y))
+            y += 18
+            self.display.blit(self.font.render(f"  Deaths: {stats.deaths}", True, self.config.colors.TEXT), (x, y))
+            y += 18
+            
+            # Показываем поколение ТОЛЬКО для GA
+            if team_conf and team_conf.brain_type == "GA":
+                self.display.blit(self.font.render(f"  Generation: {stats.generation}", True, self.config.colors.TEXT), (x, y))
+                y += 18
+
+            # --- Индикаторы голода ---
+            team_snakes = [s for s in state.snakes if s.team_name == name and s.is_alive]
+            for i, s in enumerate(team_snakes):
+                h = s.steps_since_last_food
+                limit = self.config.max_steps_without_food
+                
+                # Цвет: Зеленый (сыт) -> Красный (голоден)
+                ratio = min(h / limit, 1.0)
+                color = (int(255 * ratio), int(255 * (1 - ratio)), 0)
+                
+                self.display.blit(self.font.render(f"  S{i+1} Hunger: {h}/{limit}", True, color), (x, y))
+                y += 16
+            
+            y += 14 # Отступ между командами
 
     def get_input(self):
         res = {'quit': False, 'toggle_speed': False, 'save': False, 'load': False}
