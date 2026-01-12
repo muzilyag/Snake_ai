@@ -7,15 +7,15 @@ class RewardConfig:
     food_reward_base: float = 20.0
     death_penalty_base: float = -20.0
     
-    # Linear params
+    # ! Linear params
     step_closer: float = 1.0
     step_farther: float = -1.5
     
-    # Dynamic params
+    # ! Dynamic params
     dynamic_velocity_multiplier: float = 2.0 
     wall_proximity_penalty: float = -0.5
     
-    # New params for smarter AI
+    # ! New params for smarter AI
     danger_sensing_penalty: float = -0.5
     survival_bonus: float = 0.01
 
@@ -27,6 +27,12 @@ class Color:
     SIDEBAR_BG = (245, 245, 245)
     FOOD = (200, 0, 0)
 
+    # ? Dark Mode
+    # BACKGROUND = (16, 16, 30)
+    # GRID = (30, 30, 30)
+    # TEXT = (200, 200, 200)
+    # SIDEBAR_BG = (0, 0, 0)
+
 @dataclass
 class TeamConfig:
     name: str
@@ -37,8 +43,8 @@ class TeamConfig:
 
 @dataclass
 class GameConfig:
-    grid_width: int = 20
-    grid_height: int = 20
+    grid_width: int = 40
+    grid_height: int = 40
     block_size: int = 20
     sidebar_width: int = 300
     fps_train: int = 0
@@ -46,6 +52,10 @@ class GameConfig:
     food_count: int = 6
     initial_snake_length: int = 3
     max_steps_without_food: int = 200
+    
+    # ! Analytics
+    stats_interval: int = 1000
+    
     rewards: RewardConfig = field(default_factory=RewardConfig)
     teams: List[TeamConfig] = field(default_factory=lambda: [
         TeamConfig("Green Linear", 2, (0, 180, 0), "RL", "linear"),

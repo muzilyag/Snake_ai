@@ -1,8 +1,9 @@
 import random
 import time
 import math
-from src.core.types import Point, GameStateDTO, GlobalStats, TeamStats
+from src.core.types import Point, GameStateDTO, GlobalStats, TeamStats, DeathReason
 from src.core.snake import Snake
+from src.core.analytics import AnalyticsEngine
 
 class GameEngine:
     def __init__(self, config):
@@ -12,8 +13,9 @@ class GameEngine:
         self.total_deaths = 0
         self.snakes = []
         self.foods = []
-        # Инициализируем TeamStats, используя dataclass
+        
         self.team_stats = {t.name: TeamStats() for t in config.teams}
+        self.analytics = AnalyticsEngine(config)
         
         for team in self.config.teams:
             for _ in range(team.count):
@@ -77,7 +79,6 @@ class GameEngine:
                 
                 danger_penalty = 0.0
                 bs = self.config.block_size
-                # Проверка 4 соседних клеток на опасность
                 neighbors = [
                     Point(snake.head.x, snake.head.y - bs),
                     Point(snake.head.x, snake.head.y + bs),
@@ -106,7 +107,6 @@ class GameEngine:
         self.iteration += 1
         results = []
         
-        # Сбрасываем текущий счет (current_score) для отрисовки, но не рекорд
         for t_name in self.team_stats:
             self.team_stats[t_name].current_score = 0
             
@@ -118,27 +118,42 @@ class GameEngine:
             reward = 0
             done = False
             
-            # --- Логика коллизий и наград ---
-            if self._check_collision(snake):
+            # --- Определение причины смерти или события ---
+            death_reason = self._get_death_reason(snake)
+            
+            if death_reason != DeathReason.ALIVE:
+                # Змейка погибла от столкновения
                 reward = self._calculate_reward(snake, 0, 0, 'death')
                 done = True
                 self.total_deaths += 1
                 self.team_stats[snake.team_name].deaths += 1
+                
+                # Логируем аналитику
+                self.analytics.log_death(snake.team_name, death_reason)
+                
                 self._respawn_snake_at_random(snake)
                 
             elif snake.steps_since_last_food >= self.config.max_steps_without_food:
+                # Змейка умерла от голода
                 reward = self._calculate_reward(snake, 0, 0, 'starve')
                 done = True
                 self.total_deaths += 1
                 self.team_stats[snake.team_name].deaths += 1
+                
+                # Логируем аналитику
+                self.analytics.log_death(snake.team_name, DeathReason.STARVATION)
+                
                 self._respawn_snake_at_random(snake)
                 
             elif snake.head in self.foods:
+                # Еда
                 reward = self._calculate_reward(snake, 0, 0, 'food')
                 snake.score += 1
                 snake.steps_since_last_food = 0
                 
-                # Обновляем рекорд команды
+                # Логируем аналитику
+                self.analytics.log_food(snake.team_name)
+                
                 if snake.score > self.team_stats[snake.team_name].record:
                     self.team_stats[snake.team_name].record = snake.score
                     
@@ -146,14 +161,16 @@ class GameEngine:
                 self._place_food()
                 
             else:
+                # Просто движение
                 dist_after = self._get_closest_food_dist(snake)
                 reward = self._calculate_reward(snake, dist_before, dist_after, 'move')
                 snake.body.pop()
             
-            # Обновляем текущий счет команды (суммарный по живым змейкам)
             self.team_stats[snake.team_name].current_score += snake.score
-            
             results.append((reward, done, snake.score))
+        
+        # Обновление аналитики (сброс буфера если пришло время)
+        self.analytics.update(self.iteration)
             
         return results, False
 
@@ -162,16 +179,26 @@ class GameEngine:
         dists = [math.sqrt((snake.head.x - f.x)**2 + (snake.head.y - f.y)**2) for f in self.foods]
         return min(dists)
 
-    def _check_collision(self, snake):
+    def _get_death_reason(self, snake) -> int:
+        """Определяет, врезалась ли змея, и во что именно."""
         h = snake.head
-        if h.x < 0 or h.x >= self.config.map_width_px or h.y < 0 or h.y >= self.config.map_height_px: return True
-        if h in snake.body[1:]: return True
+        
+        # 1. Стена
+        if h.x < 0 or h.x >= self.config.map_width_px or h.y < 0 or h.y >= self.config.map_height_px: 
+            return DeathReason.WALL
+            
+        # 2. Самопересечение (голова в своем теле, кроме шеи - это проверяется в move, но здесь финальная проверка)
+        if h in snake.body[1:]: 
+            return DeathReason.SELF_COLLISION
+            
+        # 3. Враги
         for other in self.snakes:
-            if other is not snake and h in other.body: return True
-        return False
+            if other is not snake and h in other.body: 
+                return DeathReason.ENEMY_COLLISION
+                
+        return DeathReason.ALIVE
 
     def get_state(self):
-        # Создаем GlobalStats, используя поля из types.py (total_iterations, total_time, total_deaths)
         g_stats = GlobalStats(
             total_iterations=self.iteration, 
             total_time=time.time() - self.start_time, 

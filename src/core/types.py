@@ -10,6 +10,13 @@ class Direction:
     DOWN = 3
     LEFT = 4
 
+class DeathReason:
+    ALIVE = 0
+    WALL = 1
+    SELF_COLLISION = 2
+    ENEMY_COLLISION = 3
+    STARVATION = 4
+
 @dataclass
 class TeamStats:
     record: int = 0
