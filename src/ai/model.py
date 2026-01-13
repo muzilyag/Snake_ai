@@ -23,13 +23,13 @@ class SnakeNet(nn.Module):
             os.makedirs(model_folder_path)
         path = os.path.join(model_folder_path, file_name)
         torch.save(self.state_dict(), path)
-        print(f"--- Модель сохранена: {path} ---")
+        print(f"--- Model saved: {path} ---")
 
     def load(self, file_name='model.pth'):
         path = os.path.join('./model', file_name)
         if os.path.exists(path):
             self.load_state_dict(torch.load(path))
             self.eval()
-            print(f"--- Модель загружена: {path} ---")
+            print(f"--- Model loaded: {path} ---")
             return True
         return False

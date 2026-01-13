@@ -1,5 +1,5 @@
-import torch
 import random
+import os
 from src import *
 
 def main():
@@ -24,13 +24,22 @@ def main():
     epsilon = 80
     current_fps = SETTINGS.fps_train
     
-    print("--- Процесс пошел ---")
+    print("--- Proccessing ---")
+    print("Controls: SPACE (speed), G (graphs), S/L (save/load)")
 
     while True:
         inputs = ui.get_input()
         if inputs['quit']: break
         if inputs['toggle_speed']:
             current_fps = SETTINGS.fps_watch if current_fps == SETTINGS.fps_train else SETTINGS.fps_train
+        
+        if inputs.get('toggle_graph', False):
+            csv_path = engine.analytics.get_current_filename()
+            if os.path.exists(csv_path):
+                print(f"Opening stats: {csv_path}")
+                SnakePlotter(csv_path)
+            else:
+                print("Stats file not created yet (wait for first interval).")
 
         state_dto = engine.get_state()
         indices = []
@@ -55,10 +64,9 @@ def main():
         for i, snake in enumerate(engine.snakes):
             reward, done, score = results[i]
             
-            # Вывод в консоль только при новом рекорде команды
             if engine.team_stats[snake.team_name].record > last_known_records[snake.team_name]:
                 last_known_records[snake.team_name] = engine.team_stats[snake.team_name].record
-                print(f"РЕКОРД! [{snake.team_name}] Счет: {last_known_records[snake.team_name]} (Мозг: {snake.brain_type})")
+                print(f"RECORD! [{snake.team_name}] Score: {last_known_records[snake.team_name]} (Brain: {snake.brain_type})")
 
             if snake.brain_type == "RL":
                 trainer = rl_trainers[snake.team_name]
@@ -67,14 +75,9 @@ def main():
                 if done and epsilon > 5: epsilon -= 0.05
             else:
                 if done:
-                    # Упрощенный Fitness: яблоки + время жизни
-                    fitness = (snake.score * 500) + snake.steps_alive
-                    
+                    fitness = (snake.score * 500) + snake.steps_alive                    
                     ga_manager = ga_trainers[snake.team_name]
-                    # Сохраняем результат. Если это новый чемпион команды - ga_manager это запомнит
                     ga_manager.save_candidate(models_pool[snake.team_name][i % len(SETTINGS.teams)], fitness)
-                    
-                    # Мгновенно заменяем умершую змейку мутировавшим потомком текущего чемпиона
                     models_pool[snake.team_name][i % len(SETTINGS.teams)] = ga_manager.get_offspring()
                     engine.team_stats[snake.team_name].generation += 1
 

@@ -3,6 +3,7 @@ from .core import *
 from .ui import *
 from .ai import *
 from .input import *
+from .plotter import SnakePlotter
 
 __all__ = [
     "SETTINGS",
@@ -16,5 +17,6 @@ __all__ = [
     "RLTrainer",
     "GATrainer",
     "SnakeNet",
-    "MultiAgentStrategy"
+    "MultiAgentStrategy",
+    "SnakePlotter"
 ]

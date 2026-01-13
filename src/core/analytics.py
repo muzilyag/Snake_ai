@@ -18,6 +18,9 @@ class AnalyticsEngine:
         self.csv_filename = os.path.join(self.stats_dir, f"session_{timestamp}.csv")
         self._init_csv()
 
+    def get_current_filename(self):
+        return self.csv_filename
+
     def _init_csv(self):
         headers = [
             "Iteration", 
