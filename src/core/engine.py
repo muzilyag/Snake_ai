@@ -18,16 +18,18 @@ class GameEngine:
         self.analytics = AnalyticsEngine(config)
         
         for team in self.config.teams:
-            for _ in range(team.count):
-                self.snakes.append(self._create_initial_snake(team))
+            for i in range(team.count):
+                role = team.agent_roles[i]
+                self.snakes.append(self._create_initial_snake(team, role))
         
         while len(self.foods) < self.config.food_count:
             self._place_food()
 
-    def _create_initial_snake(self, team_config):
+    def _create_initial_snake(self, team_config, role="Harvester"):
         x = random.randint(5, self.config.grid_width - 5) * self.config.block_size
         y = random.randint(5, self.config.grid_height - 5) * self.config.block_size
-        return Snake(x, y, team_config, self.config.initial_snake_length, self.config.block_size)
+        safe_role = role if role in self.config.reward_presets else "Harvester"
+        return Snake(x, y, team_config, safe_role, self.config.initial_snake_length, self.config.block_size)
 
     def _respawn_snake_at_random(self, snake):
         while True:
@@ -59,49 +61,85 @@ class GameEngine:
                 break
             attempts += 1
 
-    def _calculate_reward(self, snake, dist_before, dist_after, event_type):
-        r = self.config.rewards
+    def _get_closest_food_dist(self, snake):
+        if not self.foods: return 0
+        dists = [math.sqrt((snake.head.x - f.x)**2 + (snake.head.y - f.y)**2) for f in self.foods]
+        return min(dists)
+
+    def _get_closest_enemy_dist(self, snake):
+        min_dist = float('inf')
+        for other in self.snakes:
+            if other is not snake and other.is_alive and other.team_name != snake.team_name:
+                dist = math.sqrt((snake.head.x - other.head.x)**2 + (snake.head.y - other.head.y)**2)
+                if dist < min_dist:
+                    min_dist = dist
+        return min_dist if min_dist != float('inf') else 0
+
+    def _calculate_reward(self, snake, 
+                          dist_food_before, dist_food_after, 
+                          dist_enemy_before, dist_enemy_after, 
+                          event_type):
         
+        presets = self.config.reward_presets.get(snake.role, self.config.reward_presets["Harvester"])
+        
+        # 1. События (смерть, еда) - фиксированы всегда
+        if event_type == 'starve': return presets.get('starve', -100.0)
+        if event_type == 'death': return presets.get('death', -50.0)
+        if event_type == 'food': return presets.get('food', 10.0)
+        
+        reward = presets.get('idle_penalty', 0.0)
+        bs = self.config.block_size
+
+        # --- LINEAR MODE (Старый добрый if-else) ---
         if snake.reward_mode == "linear":
-            if event_type == 'starve': return r.starvation_penalty
-            if event_type == 'death': return r.death_penalty_base
-            if event_type == 'food':  return r.food_reward_base
-            return r.step_closer if dist_after < dist_before else r.step_farther
-
-        elif snake.reward_mode == "dynamic":
-            if event_type == 'starve': return r.starvation_penalty
-            if event_type == 'death': return -10.0 - (len(snake.body) * 0.5)
-            if event_type == 'food': return 25.0
+            # Еда
+            if dist_food_after < dist_food_before:
+                reward += presets.get('step_closer_food', 0.0)
+            else:
+                reward += presets.get('step_farther_food', 0.0)
             
-            if event_type == 'move':
-                change = dist_before - dist_after
-                vel_reward = change * r.dynamic_velocity_multiplier
-                
-                danger_penalty = 0.0
-                bs = self.config.block_size
-                neighbors = [
-                    Point(snake.head.x, snake.head.y - bs),
-                    Point(snake.head.x, snake.head.y + bs),
-                    Point(snake.head.x - bs, snake.head.y),
-                    Point(snake.head.x + bs, snake.head.y)
-                ]
-                
-                for n in neighbors:
-                    is_wall = (n.x < 0 or n.x >= self.config.map_width_px or 
-                               n.y < 0 or n.y >= self.config.map_height_px)
-                    is_body = False
-                    if not is_wall:
-                        for s in self.snakes:
-                            if s.is_alive and n in s.body:
-                                is_body = True
-                                break
-                    
-                    if is_wall or is_body:
-                        danger_penalty += r.danger_sensing_penalty
+            # Враг (только если есть)
+            if dist_enemy_before > 0:
+                if dist_enemy_after < dist_enemy_before:
+                    reward += presets.get('step_closer_enemy', 0.0)
+                else:
+                    reward += presets.get('step_farther_enemy', 0.0)
 
-                return vel_reward + danger_penalty + r.survival_bonus
+        # --- DYNAMIC MODE (Учитывает магнитуду движения) ---
+        elif snake.reward_mode == "dynamic":
+            # Считаем изменение (delta). Делим на bs, чтобы нормализовать к 1 шагу.
+            # Пример: приблизился на 20px (1 блок) -> delta = 20. 20/20 = 1.0. 
+            # Награда = 1.0 * coefficient.
+            
+            # Еда
+            delta_food = dist_food_before - dist_food_after
+            normalized_food = delta_food / bs
+            # Если приблизился (normalized > 0), умножаем на 'step_closer', иначе на 'step_farther'
+            # Но для упрощения динамики часто используют один коэффициент на сближение. 
+            # Мы используем логику пресетов:
+            if normalized_food > 0:
+                reward += normalized_food * presets.get('step_closer_food', 0.0)
+            else:
+                # normalized_food отрицательный, берем модуль для умножения на штраф
+                reward += abs(normalized_food) * presets.get('step_farther_food', 0.0)
+            
+            # Враг
+            if dist_enemy_before > 0:
+                delta_enemy = dist_enemy_before - dist_enemy_after
+                normalized_enemy = delta_enemy / bs
                 
-        return 0.0
+                if normalized_enemy > 0:
+                    reward += normalized_enemy * presets.get('step_closer_enemy', 0.0)
+                else:
+                    reward += abs(normalized_enemy) * presets.get('step_farther_enemy', 0.0)
+
+        # Штраф за стены (одинаков для всех)
+        h = snake.head
+        if h.x < bs or h.x > self.config.map_width_px - bs or \
+           h.y < bs or h.y > self.config.map_height_px - bs:
+            reward += presets.get('wall_penalty', 0.0)
+            
+        return reward
 
     def step(self, actions):
         self.iteration += 1
@@ -111,47 +149,38 @@ class GameEngine:
             self.team_stats[t_name].current_score = 0
             
         for i, snake in enumerate(self.snakes):
-            dist_before = self._get_closest_food_dist(snake)
+            dist_food_before = self._get_closest_food_dist(snake)
+            dist_enemy_before = self._get_closest_enemy_dist(snake)
+
             snake.move(self.config.block_size)
             snake.body.insert(0, snake.head)
             
             reward = 0
             done = False
+            event = 'move'
             
-            # --- Определение причины смерти или события ---
             death_reason = self._get_death_reason(snake)
             
             if death_reason != DeathReason.ALIVE:
-                # Змейка погибла от столкновения
-                reward = self._calculate_reward(snake, 0, 0, 'death')
+                event = 'death'
                 done = True
                 self.total_deaths += 1
                 self.team_stats[snake.team_name].deaths += 1
-                
-                # Логируем аналитику
                 self.analytics.log_death(snake.team_name, death_reason)
-                
                 self._respawn_snake_at_random(snake)
                 
             elif snake.steps_since_last_food >= self.config.max_steps_without_food:
-                # Змейка умерла от голода
-                reward = self._calculate_reward(snake, 0, 0, 'starve')
+                event = 'starve'
                 done = True
                 self.total_deaths += 1
                 self.team_stats[snake.team_name].deaths += 1
-                
-                # Логируем аналитику
                 self.analytics.log_death(snake.team_name, DeathReason.STARVATION)
-                
                 self._respawn_snake_at_random(snake)
                 
             elif snake.head in self.foods:
-                # Еда
-                reward = self._calculate_reward(snake, 0, 0, 'food')
+                event = 'food'
                 snake.score += 1
                 snake.steps_since_last_food = 0
-                
-                # Логируем аналитику
                 self.analytics.log_food(snake.team_name)
                 
                 if snake.score > self.team_stats[snake.team_name].record:
@@ -159,43 +188,49 @@ class GameEngine:
                     
                 self.foods.remove(snake.head)
                 self._place_food()
-                
+            
             else:
-                # Просто движение
-                dist_after = self._get_closest_food_dist(snake)
-                reward = self._calculate_reward(snake, dist_before, dist_after, 'move')
                 snake.body.pop()
+
+            dist_food_after = self._get_closest_food_dist(snake)
+            dist_enemy_after = self._get_closest_enemy_dist(snake)
+
+            reward = self._calculate_reward(
+                snake, 
+                dist_food_before, dist_food_after, 
+                dist_enemy_before, dist_enemy_after, 
+                event
+            )
             
             self.team_stats[snake.team_name].current_score += snake.score
             results.append((reward, done, snake.score))
         
-        # Обновление аналитики (сброс буфера если пришло время)
         self.analytics.update(self.iteration)
-            
         return results, False
 
     def _get_closest_food_dist(self, snake):
         if not self.foods: return 0
         dists = [math.sqrt((snake.head.x - f.x)**2 + (snake.head.y - f.y)**2) for f in self.foods]
         return min(dists)
+    
+    def _get_closest_enemy_dist(self, snake):
+        min_dist = float('inf')
+        for other in self.snakes:
+            if other is not snake and other.is_alive and other.team_name != snake.team_name:
+                dist = math.sqrt((snake.head.x - other.head.x)**2 + (snake.head.y - other.head.y)**2)
+                if dist < min_dist:
+                    min_dist = dist
+        return min_dist if min_dist != float('inf') else 0
 
     def _get_death_reason(self, snake) -> int:
-        """Определяет, врезалась ли змея, и во что именно."""
         h = snake.head
-        
-        # 1. Стена
         if h.x < 0 or h.x >= self.config.map_width_px or h.y < 0 or h.y >= self.config.map_height_px: 
             return DeathReason.WALL
-            
-        # 2. Самопересечение (голова в своем теле, кроме шеи - это проверяется в move, но здесь финальная проверка)
         if h in snake.body[1:]: 
             return DeathReason.SELF_COLLISION
-            
-        # 3. Враги
         for other in self.snakes:
             if other is not snake and h in other.body: 
                 return DeathReason.ENEMY_COLLISION
-                
         return DeathReason.ALIVE
 
     def get_state(self):

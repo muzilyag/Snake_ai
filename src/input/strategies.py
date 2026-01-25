@@ -19,32 +19,54 @@ class MultiAgentStrategy:
 
     def _get_sensors(self, snake, state_dto):
         head = snake.head
+        bs = self.config.block_size
         
-        point_l = Point(head.x - 20, head.y)
-        point_r = Point(head.x + 20, head.y)
-        point_u = Point(head.x, head.y - 20)
-        point_d = Point(head.x, head.y + 20)
+        point_l = Point(head.x - bs, head.y)
+        point_r = Point(head.x + bs, head.y)
+        point_u = Point(head.x, head.y - bs)
+        point_d = Point(head.x, head.y + bs)
 
         dir_l = snake.direction == Direction.LEFT
         dir_r = snake.direction == Direction.RIGHT
         dir_u = snake.direction == Direction.UP
         dir_d = snake.direction == Direction.DOWN
 
+        def is_obstacle(pt):
+            if pt.x < 0 or pt.x >= self.config.map_width_px or \
+               pt.y < 0 or pt.y >= self.config.map_height_px:
+                return True
+            
+            for s in state_dto.snakes:
+                if s.is_alive and s.team_name == snake.team_name:
+                    if pt in s.body:
+                        return True
+            return False
+
+        def is_enemy(pt):
+            for s in state_dto.snakes:
+                if s.is_alive and s.team_name != snake.team_name:
+                    if pt in s.body:
+                        return True
+            return False
+
+        obs_l = is_obstacle(point_l)
+        obs_r = is_obstacle(point_r)
+        obs_u = is_obstacle(point_u)
+        obs_d = is_obstacle(point_d)
+
+        enm_l = is_enemy(point_l)
+        enm_r = is_enemy(point_r)
+        enm_u = is_enemy(point_u)
+        enm_d = is_enemy(point_d)
+
         state = [
-            (dir_r and self._is_collision(point_r, state_dto)) or 
-            (dir_l and self._is_collision(point_l, state_dto)) or 
-            (dir_u and self._is_collision(point_u, state_dto)) or 
-            (dir_d and self._is_collision(point_d, state_dto)),
+            (dir_r and obs_r) or (dir_l and obs_l) or (dir_u and obs_u) or (dir_d and obs_d),
+            (dir_u and obs_r) or (dir_d and obs_l) or (dir_l and obs_u) or (dir_r and obs_d),
+            (dir_d and obs_r) or (dir_u and obs_l) or (dir_r and obs_u) or (dir_l and obs_d),
 
-            (dir_u and self._is_collision(point_r, state_dto)) or 
-            (dir_d and self._is_collision(point_l, state_dto)) or 
-            (dir_l and self._is_collision(point_u, state_dto)) or 
-            (dir_r and self._is_collision(point_d, state_dto)),
-
-            (dir_d and self._is_collision(point_r, state_dto)) or 
-            (dir_u and self._is_collision(point_l, state_dto)) or 
-            (dir_r and self._is_collision(point_u, state_dto)) or 
-            (dir_l and self._is_collision(point_d, state_dto)),
+            (dir_r and enm_r) or (dir_l and enm_l) or (dir_u and enm_u) or (dir_d and enm_d),
+            (dir_u and enm_r) or (dir_d and enm_l) or (dir_l and enm_u) or (dir_r and enm_d),
+            (dir_d and enm_r) or (dir_u and enm_l) or (dir_r and enm_u) or (dir_l and enm_d),
 
             dir_l,
             dir_r,
@@ -65,23 +87,13 @@ class MultiAgentStrategy:
         closest = min(foods, key=lambda f: (snake.head.x - f.x)**2 + (snake.head.y - f.y)**2)
         return closest
 
-    def _is_collision(self, pt, state):
-        if pt.x < 0 or pt.x >= self.config.map_width_px or \
-           pt.y < 0 or pt.y >= self.config.map_height_px:
-            return True
-        
-        for s in state.snakes:
-            if s.is_alive and pt in s.body:
-                return True
-        return False
-
     def _transform_action(self, snake, action_idx):
         clock_wise = [Direction.RIGHT, Direction.DOWN, Direction.LEFT, Direction.UP]
         idx = clock_wise.index(snake.direction)
 
-        if action_idx == 0: 
+        if action_idx == 0:
             return clock_wise[idx]
-        elif action_idx == 1: 
+        elif action_idx == 1:
             return clock_wise[(idx + 1) % 4]
-        else: 
+        else:
             return clock_wise[(idx - 1) % 4]

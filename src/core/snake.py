@@ -1,7 +1,7 @@
 from src.core.types import Direction, Point
 
 class Snake:
-    def __init__(self, x, y, team_config, initial_length=3, block_size=20):
+    def __init__(self, x, y, team_config, role="Harvester", initial_length=3, block_size=20):
         self.head = Point(x, y)
         self.body = []
         for i in range(initial_length):
@@ -16,10 +16,13 @@ class Snake:
         self.steps_since_last_food = 0
         self.deaths = 0
         self.brain_type = team_config.brain_type
+        # Сохраняем режим расчета наград
         self.reward_mode = team_config.reward_mode
+        self.role = role
 
     def set_direction(self, direction):
         if not self.is_alive: return
+        # Запрет разворота на 180 градусов
         if (direction == Direction.UP and self.direction == Direction.DOWN) or \
            (direction == Direction.DOWN and self.direction == Direction.UP) or \
            (direction == Direction.LEFT and self.direction == Direction.RIGHT) or \
