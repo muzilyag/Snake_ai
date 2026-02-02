@@ -16,6 +16,7 @@ class Snake:
         self.max_hp = role_cfg.max_hp
         self.hp = role_cfg.start_hp
         self.damage_dealt = role_cfg.damage_dealt
+        self.victim_return_damage = role_cfg.victim_return_damage
         self.self_damage = role_cfg.self_damage
         self.collision_survivable = role_cfg.collision_survivable
         

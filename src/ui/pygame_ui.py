@@ -8,7 +8,7 @@ class PygameRenderer:
         self.font = pygame.font.SysFont('arial', 16)
         self.font_bold = pygame.font.SysFont('arial', 16, bold=True)
         self.display = pygame.display.set_mode((config.window_width, config.window_height))
-        pygame.display.set_caption('Multi-Brain Snake AI (HP & Roles)')
+        pygame.display.set_caption('Snake AI')
         self.clock = pygame.time.Clock()
 
     def render(self, state):
@@ -57,6 +57,9 @@ class PygameRenderer:
                     (center_x, snake.head.y + bs - 4),
                     (snake.head.x + 4, center_y)
                 ])
+            elif snake.role == "Defender":
+                pygame.draw.rect(self.display, (50, 200, 50), 
+                                 (snake.head.x + 5, snake.head.y + 5, bs - 10, bs - 10))
             else:
                 pygame.draw.circle(self.display, (50, 50, 255), (center_x, center_y), 3)
 
@@ -91,7 +94,7 @@ class PygameRenderer:
             y += 18
             self.display.blit(self.font.render(f"  Deaths: {stats.deaths}", True, self.config.colors.TEXT), (x_offset, y))
             y += 18
-            self.display.blit(self.font.render(f"  Current Score: {stats.current_score}", True, self.config.colors.TEXT), (x_offset, y))
+            self.display.blit(self.font.render(f"  Score: {stats.current_score}", True, self.config.colors.TEXT), (x_offset, y))
             y += 18
             
             if team_conf and team_conf.brain_type == "GA":
@@ -103,11 +106,15 @@ class PygameRenderer:
                 hp_ratio = min(s.hp / s.max_hp, 1.0)
                 bar_width = 100
                 fill_width = int(bar_width * hp_ratio)
+                
                 bar_color = (int(255 * (1 - hp_ratio)), int(255 * hp_ratio), 0)
-                role_txt = "HNT" if s.role == "Hunter" else "HRV"
-                self.display.blit(self.font.render(f"  S{i+1} [{role_txt}]:", True, self.config.colors.TEXT), (x_offset, y))                
+                
+                role_txt = s.role[:3].upper()
+                self.display.blit(self.font.render(f"  S{i+1} [{role_txt}]:", True, self.config.colors.TEXT), (x_offset, y))
+                
                 pygame.draw.rect(self.display, (200,200,200), (x_offset + 80, y + 5, bar_width, 10))
                 pygame.draw.rect(self.display, bar_color, (x_offset + 80, y + 5, fill_width, 10))
+                
                 y += 20
             
             y += 10

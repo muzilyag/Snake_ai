@@ -70,7 +70,8 @@ class GameEngine:
 
     def _calculate_reward(self, snake, 
                           dist_food_before, dist_food_after, 
-                          dist_enemy_before, dist_enemy_after, 
+                          dist_enemy_before, dist_enemy_after,
+                          dist_ally_before, dist_ally_after,
                           event_type):
         
         presets = self.config.reward_presets.get(snake.role, self.config.reward_presets["Harvester"])
@@ -96,6 +97,12 @@ class GameEngine:
                     reward += presets.get('step_closer_enemy', 0.0)
                 else:
                     reward += presets.get('step_farther_enemy', 0.0)
+            
+            if dist_ally_before > 0:
+                if dist_ally_after < dist_ally_before:
+                    reward += presets.get('step_closer_team', 0.0)
+                else:
+                    reward += presets.get('step_farther_team', 0.0)
 
         elif snake.reward_mode == "dynamic":
             delta_food = dist_food_before - dist_food_after
@@ -112,6 +119,14 @@ class GameEngine:
                     reward += normalized_enemy * presets.get('step_closer_enemy', 0.0)
                 else:
                     reward += abs(normalized_enemy) * presets.get('step_farther_enemy', 0.0)
+            
+            if dist_ally_before > 0:
+                delta_ally = dist_ally_before - dist_ally_after
+                normalized_ally = delta_ally / bs
+                if normalized_ally > 0:
+                    reward += normalized_ally * presets.get('step_closer_team', 0.0)
+                else:
+                    reward += abs(normalized_ally) * presets.get('step_farther_team', 0.0)
 
         h = snake.head
         if h.x < bs or h.x > self.config.map_width_px - bs or \
@@ -135,6 +150,7 @@ class GameEngine:
 
             dist_food_before = self._get_closest_food_dist(snake)
             dist_enemy_before = self._get_closest_enemy_dist(snake)
+            dist_ally_before = self._get_closest_ally_dist(snake)
 
             next_head = snake.move_head_prediction(self.config.block_size)
             
@@ -162,9 +178,6 @@ class GameEngine:
                 snake.score += 1
                 snake.heal(self.config.food_heal_amount)
                 
-                if snake.score > self.team_stats[snake.team_name].record:
-                    self.team_stats[snake.team_name].record = snake.score
-                
                 self.foods.remove(next_head)
                 self._place_food()
                 event = 'food'
@@ -172,7 +185,8 @@ class GameEngine:
 
             elif victim_snake:
                 victim_snake.take_damage(snake.damage_dealt)
-                
+                snake.take_damage(victim_snake.victim_return_damage)
+
                 if victim_snake.team_name == snake.team_name and victim_snake is not snake:
                      presets = self.config.reward_presets.get(snake.role, {})
                      snake.pending_reward += presets.get('friendly_fire', -10.0)
@@ -180,6 +194,14 @@ class GameEngine:
                 if victim_snake.team_name != snake.team_name:
                     presets = self.config.reward_presets.get(snake.role, {})
                     snake.pending_reward += presets.get('damage_dealt_reward', 0.0)
+                    
+                    if victim_snake.victim_return_damage > 0:
+                        v_presets = self.config.reward_presets.get(victim_snake.role, {})
+                        victim_snake.pending_reward += v_presets.get('damage_dealt_reward', 0.0)
+
+                    if not snake.is_alive:
+                         v_presets = self.config.reward_presets.get(victim_snake.role, {})
+                         victim_snake.pending_reward += v_presets.get('kill_reward', 0.0)
 
                 if snake.collision_survivable:
                     snake.take_damage(snake.self_damage)
@@ -211,8 +233,6 @@ class GameEngine:
                                 snake.body.insert(0, snake.head)
                                 snake.body.pop()
                                 
-                                if not victim_snake.is_alive:
-                                    pass
                         except ValueError:
                             snake.is_alive = False
                             done = True
@@ -251,11 +271,13 @@ class GameEngine:
 
             dist_food_after = self._get_closest_food_dist(snake)
             dist_enemy_after = self._get_closest_enemy_dist(snake)
+            dist_ally_after = self._get_closest_ally_dist(snake)
 
             reward += self._calculate_reward(
                 snake, 
                 dist_food_before, dist_food_after, 
-                dist_enemy_before, dist_enemy_after, 
+                dist_enemy_before, dist_enemy_after,
+                dist_ally_before, dist_ally_after,
                 event
             )
             
@@ -263,6 +285,10 @@ class GameEngine:
             self.team_stats[snake.team_name].current_score += current_len
             
             results.append((reward, done, snake.score))
+
+        for t_name in self.team_stats:
+            if self.team_stats[t_name].current_score > self.team_stats[t_name].record:
+                self.team_stats[t_name].record = self.team_stats[t_name].current_score
         
         self.analytics.update(self.iteration)
         return results, False
@@ -276,6 +302,15 @@ class GameEngine:
         min_dist = float('inf')
         for other in self.snakes:
             if other is not snake and other.is_alive and other.team_name != snake.team_name:
+                dist = math.sqrt((snake.head.x - other.head.x)**2 + (snake.head.y - other.head.y)**2)
+                if dist < min_dist:
+                    min_dist = dist
+        return min_dist if min_dist != float('inf') else 0
+
+    def _get_closest_ally_dist(self, snake):
+        min_dist = float('inf')
+        for other in self.snakes:
+            if other is not snake and other.is_alive and other.team_name == snake.team_name:
                 dist = math.sqrt((snake.head.x - other.head.x)**2 + (snake.head.y - other.head.y)**2)
                 if dist < min_dist:
                     min_dist = dist

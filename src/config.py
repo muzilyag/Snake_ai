@@ -13,8 +13,9 @@ class Color:
 class RoleConfig:
     max_hp: float = 100.0
     start_hp: float = 100.0
-    damage_dealt: float = 10.0      # Урон врагу при ударе
-    self_damage: float = 100.0      # Урон себе при ударе (100 = смерть)
+    damage_dealt: float = 10.0
+    victim_return_damage: float = 0.0
+    self_damage: float = 100.0
     collision_survivable: bool = False
 
 @dataclass
@@ -37,7 +38,6 @@ class GameConfig:
     food_count: int = 6
     initial_snake_length: int = 1
     
-    # HP System
     hp_decay_per_step: float = 0.5
     food_heal_amount: float = 30.0
     
@@ -48,6 +48,7 @@ class GameConfig:
             max_hp=100.0,
             start_hp=100.0,
             damage_dealt=10.0,
+            victim_return_damage=0.0,
             self_damage=100.0,
             collision_survivable=False
         ),
@@ -55,58 +56,96 @@ class GameConfig:
             max_hp=150.0,
             start_hp=150.0,
             damage_dealt=50.0,
+            victim_return_damage=10.0,
             self_damage=15.0,
             collision_survivable=True
+        ),
+        "Defender": RoleConfig(
+            max_hp=200.0,
+            start_hp=200.0,
+            damage_dealt=20.0,
+            victim_return_damage=50.0,
+            self_damage=100.0,
+            collision_survivable=False
         )
     })
     
     reward_presets: Dict[str, Dict[str, float]] = field(default_factory=lambda: {
         "Harvester": {
-            "food": 20.0,
+            "food": 25.0,
             "starve": -50.0,
             "death": -20.0,
             "kill_reward": 5.0,
+            "damage_dealt_reward": 0.0,
             "friendly_fire": -50.0,
-            "step_closer_food": 1.0,
-            "step_farther_food": -1.5,
+            "step_closer_food": 1.5,
+            "step_farther_food": -2.0,
             "step_closer_enemy": 0.0,
             "step_farther_enemy": 0.0,
+            "step_closer_team": 0.0,
+            "step_farther_team": 0.0,
             "wall_penalty": -0.5,
-            "idle_penalty": -0.05
+            "idle_penalty": -0.1
         },
         "Hunter": {
-            "food": 5.0,
-            "starve": -20.0,
+            "food": 10.0,           
+            "starve": -30.0,
             "death": -50.0,
-            "kill_reward": 50.0,
-            "damage_dealt_reward": 1.0,
+            "kill_reward": 100.0,
+            "damage_dealt_reward": 5.0,
             "friendly_fire": -100.0,
-            "step_closer_food": 0.1,
+            "step_closer_food": 0.5, 
             "step_farther_food": -0.1,
-            "step_closer_enemy": 2.5,
-            "step_farther_enemy": -3.0,
+            "step_closer_enemy": 3.5,
+            "step_farther_enemy": -3.5,
+            "step_closer_team": -0.5,
+            "step_farther_team": 0.5,
             "wall_penalty": -0.5,
-            "idle_penalty": -0.05
+            "idle_penalty": -0.1
+        },
+        "Defender": {
+            "food": 8.0,
+            "starve": -50.0,
+            "death": -30.0,
+            "kill_reward": 50.0,
+            "damage_dealt_reward": 15.0,
+            "friendly_fire": -50.0,
+            "step_closer_food": 0.5,
+            "step_farther_food": -0.5,
+            "step_closer_enemy": 1.0,
+            "step_farther_enemy": 0.0,
+            "step_closer_team": 1.5,
+            "step_farther_team": -1.5,
+            "wall_penalty": -0.2,
+            "idle_penalty": 0.0
         }
     })
 
     teams: List[TeamConfig] = field(default_factory=lambda: [
         TeamConfig(
             name="Green Squad", 
-            count=2, 
+            count=3, 
             color=(0, 180, 0), 
             brain_type="RL", 
             reward_mode="linear",
-            agent_roles=["Harvester", "Harvester"]
+            agent_roles=["Harvester", "Harvester", "Defender"]
         ),
         TeamConfig(
             name="Blue Squad", 
-            count=2, 
+            count=3, 
             color=(0, 0, 180), 
             brain_type="RL", 
             reward_mode="linear",
-            agent_roles=["Harvester", "Hunter"]
+            agent_roles=["Harvester", "Harvester", "Hunter"]
         ),
+        TeamConfig(
+            name="Red Squad", 
+            count=3, 
+            color=(180, 0, 0), 
+            brain_type="RL", 
+            reward_mode="linear",
+            agent_roles=["Harvester", "Harvester", "Harvester"]
+        )
     ])
     colors: Color = field(default_factory=Color)
 

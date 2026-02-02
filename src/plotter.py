@@ -91,7 +91,6 @@ class SnakePlotter:
                 continue
             
             points = self.data.get(team, {}).get(self.selected_metric, [])
-            # Фильтрация по диапазону
             filtered = [(i, v) for i, v in points if self.min_iter <= i <= self.max_iter]
             
             if not filtered:
@@ -104,7 +103,7 @@ class SnakePlotter:
             color = self._get_team_color(team)
             
             if self.show_raw:
-                alpha = 0.3 if self.show_trend else 1.0 # Если включен тренд, делаем точки прозрачнее
+                alpha = 0.3 if self.show_trend else 1.0
                 self.ax.plot(xs, ys, marker='o', markersize=3, linestyle='-', 
                              linewidth=1, color=color, alpha=alpha, label=f"{team} (Raw)")
             
