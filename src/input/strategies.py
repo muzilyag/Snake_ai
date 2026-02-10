@@ -26,65 +26,109 @@ class MultiAgentStrategy:
         point_u = Point(head.x, head.y - bs)
         point_d = Point(head.x, head.y + bs)
 
-        dir_l = snake.direction == Direction.LEFT
-        dir_r = snake.direction == Direction.RIGHT
-        dir_u = snake.direction == Direction.UP
-        dir_d = snake.direction == Direction.DOWN
+        clock_wise = [Direction.RIGHT, Direction.DOWN, Direction.LEFT, Direction.UP]
+        idx = clock_wise.index(snake.direction)
+        
+        dir_straight = clock_wise[idx]
+        dir_right = clock_wise[(idx + 1) % 4]
+        dir_left = clock_wise[(idx - 1) % 4]
+        
+        def get_point_in_dir(d):
+            if d == Direction.LEFT: return point_l
+            if d == Direction.RIGHT: return point_r
+            if d == Direction.UP: return point_u
+            return point_d
 
-        def is_obstacle(pt):
-            if pt.x < 0 or pt.x >= self.config.map_width_px or \
-               pt.y < 0 or pt.y >= self.config.map_height_px:
-                return True
+        p_straight = get_point_in_dir(dir_straight)
+        p_right = get_point_in_dir(dir_right)
+        p_left = get_point_in_dir(dir_left)
+
+        points_to_check = [p_straight, p_right, p_left]
+        
+        surroundings = []
+        
+        for pt in points_to_check:
+            is_wall = (pt.x < 0 or pt.x >= self.config.map_width_px or 
+                       pt.y < 0 or pt.y >= self.config.map_height_px)
+            is_friend = False
+            enemy_role = None
             
-            for s in state_dto.snakes:
-                if s.is_alive and s.team_name == snake.team_name:
-                    if pt in s.body:
-                        return True
-            return False
+            if not is_wall:
+                for s in state_dto.snakes:
+                    if s.is_alive and pt in s.body:
+                        if s.team_name == snake.team_name:
+                            is_friend = True
+                        else:
+                            enemy_role = s.role
+                        break
+            
+            surroundings.append(float(is_wall or is_friend))
+            
+            surroundings.append(float(enemy_role == "Harvester"))
+            surroundings.append(float(enemy_role == "Hunter"))
+            surroundings.append(float(enemy_role == "Defender"))
 
-        def is_enemy(pt):
-            for s in state_dto.snakes:
-                if s.is_alive and s.team_name != snake.team_name:
-                    if pt in s.body:
-                        return True
-            return False
-
-        obs_l = is_obstacle(point_l)
-        obs_r = is_obstacle(point_r)
-        obs_u = is_obstacle(point_u)
-        obs_d = is_obstacle(point_d)
-
-        enm_l = is_enemy(point_l)
-        enm_r = is_enemy(point_r)
-        enm_u = is_enemy(point_u)
-        enm_d = is_enemy(point_d)
-
-        state = [
-            (dir_r and obs_r) or (dir_l and obs_l) or (dir_u and obs_u) or (dir_d and obs_d),
-            (dir_u and obs_r) or (dir_d and obs_l) or (dir_l and obs_u) or (dir_r and obs_d),
-            (dir_d and obs_r) or (dir_u and obs_l) or (dir_r and obs_u) or (dir_l and obs_d),
-
-            (dir_r and enm_r) or (dir_l and enm_l) or (dir_u and enm_u) or (dir_d and enm_d),
-            (dir_u and enm_r) or (dir_d and enm_l) or (dir_l and enm_u) or (dir_r and enm_d),
-            (dir_d and enm_r) or (dir_u and enm_l) or (dir_r and enm_u) or (dir_l and enm_d),
-
-            dir_l,
-            dir_r,
-            dir_u,
-            dir_d,
+        dir_inputs = [
+            float(snake.direction == Direction.LEFT),
+            float(snake.direction == Direction.RIGHT),
+            float(snake.direction == Direction.UP),
+            float(snake.direction == Direction.DOWN)
         ]
         
         food = self._get_closest_food(snake, state_dto.foods)
-        state.append(food.x < head.x)
-        state.append(food.x > head.x)
-        state.append(food.y < head.y)
-        state.append(food.y > head.y)
+        food_inputs = [
+            float(food.x < head.x),
+            float(food.x > head.x),
+            float(food.y < head.y),
+            float(food.y > head.y)
+        ]
+        
+        ally = self._get_closest_ally(snake, state_dto.snakes)
+        ally_inputs = [0.0, 0.0, 0.0] # [Ally Straight, Ally Right, Ally Left] - вектор
+        
+        if ally:
+             dx = ally.head.x - head.x
+             dy = ally.head.y - head.y
+             
+             dist = (dx**2 + dy**2)**0.5
+             is_close = 1.0 if dist < (bs * 4) else 0.0
+             ally_inputs = [is_close, 0.0, 0.0]
+             
+             ally_inputs = [
+                 float(ally.head.x < head.x),
+                 float(ally.head.x > head.x),
+                 float(ally.head.y < head.y)
+             ]
+
+        ally_dirs = [0.0, 0.0, 0.0]
+        if ally:
+            ally_dirs[0] = float(ally.head.x < head.x)
+            ally_dirs[1] = float(ally.head.x > head.x)
+            ally_dirs[2] = float(ally.head.y < head.y)
+
+        state = np.concatenate([
+            surroundings, 
+            dir_inputs, 
+            food_inputs, 
+            ally_dirs
+        ])
         
         return np.array(state, dtype=float)
 
     def _get_closest_food(self, snake, foods):
         if not foods: return Point(-1, -1)
         closest = min(foods, key=lambda f: (snake.head.x - f.x)**2 + (snake.head.y - f.y)**2)
+        return closest
+
+    def _get_closest_ally(self, snake, snakes):
+        closest = None
+        min_dist = float('inf')
+        for s in snakes:
+            if s is not snake and s.is_alive and s.team_name == snake.team_name:
+                dist = (snake.head.x - s.head.x)**2 + (snake.head.y - s.head.y)**2
+                if dist < min_dist:
+                    min_dist = dist
+                    closest = s
         return closest
 
     def _transform_action(self, snake, action_idx):

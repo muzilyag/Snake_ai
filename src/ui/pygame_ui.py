@@ -8,7 +8,7 @@ class PygameRenderer:
         self.font = pygame.font.SysFont('arial', 16)
         self.font_bold = pygame.font.SysFont('arial', 16, bold=True)
         self.display = pygame.display.set_mode((config.window_width, config.window_height))
-        pygame.display.set_caption('Snake AI')
+        pygame.display.set_caption('Multi-Brain Snake AI (HP & Roles)')
         self.clock = pygame.time.Clock()
 
     def render(self, state):
@@ -109,7 +109,7 @@ class PygameRenderer:
                 
                 bar_color = (int(255 * (1 - hp_ratio)), int(255 * hp_ratio), 0)
                 
-                role_txt = s.role[:3].upper()
+                role_txt = s.role[:3].upper() # HRV, HNT, DEF
                 self.display.blit(self.font.render(f"  S{i+1} [{role_txt}]:", True, self.config.colors.TEXT), (x_offset, y))
                 
                 pygame.draw.rect(self.display, (200,200,200), (x_offset + 80, y + 5, bar_width, 10))
@@ -125,7 +125,8 @@ class PygameRenderer:
             'toggle_speed': False, 
             'save': False, 
             'load': False,
-            'toggle_graph': False 
+            'toggle_graph': False,
+            'toggle_visuals': False # Новая кнопка V
         }
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
@@ -139,4 +140,6 @@ class PygameRenderer:
                     res['load'] = True
                 if event.key == pygame.K_g:
                     res['toggle_graph'] = True
+                if event.key == pygame.K_v:
+                    res['toggle_visuals'] = True
         return res

@@ -70,7 +70,7 @@ class GameEngine:
 
     def _calculate_reward(self, snake, 
                           dist_food_before, dist_food_after, 
-                          dist_enemy_before, dist_enemy_after,
+                          closest_enemy_before, closest_enemy_after,
                           dist_ally_before, dist_ally_after,
                           event_type):
         
@@ -86,47 +86,31 @@ class GameEngine:
         reward += presets.get('idle_penalty', 0.0)
         bs = self.config.block_size
 
-        if snake.reward_mode == "linear":
-            if dist_food_after < dist_food_before:
-                reward += presets.get('step_closer_food', 0.0)
+        if dist_food_after < dist_food_before:
+            reward += presets.get('step_closer_food', 0.0)
+        else:
+            reward += presets.get('step_farther_food', 0.0)
+            
+        enemy_snake, dist_before = closest_enemy_before
+        _, dist_after = closest_enemy_after
+        
+        if enemy_snake and dist_before > 0:
+            role_key_closer = f"step_closer_enemy_{enemy_snake.role.lower()}" if hasattr(enemy_snake, 'role') else "step_closer_enemy"
+            
+            val_closer = presets.get(role_key_closer, presets.get('step_closer_enemy', 0.0))
+            
+            val_farther = -val_closer * 0.5
+            
+            if dist_after < dist_before:
+                reward += val_closer
             else:
-                reward += presets.get('step_farther_food', 0.0)
+                reward += val_farther
             
-            if dist_enemy_before > 0:
-                if dist_enemy_after < dist_enemy_before:
-                    reward += presets.get('step_closer_enemy', 0.0)
-                else:
-                    reward += presets.get('step_farther_enemy', 0.0)
-            
-            if dist_ally_before > 0:
-                if dist_ally_after < dist_ally_before:
-                    reward += presets.get('step_closer_team', 0.0)
-                else:
-                    reward += presets.get('step_farther_team', 0.0)
-
-        elif snake.reward_mode == "dynamic":
-            delta_food = dist_food_before - dist_food_after
-            normalized_food = delta_food / bs
-            if normalized_food > 0:
-                reward += normalized_food * presets.get('step_closer_food', 0.0)
+        if dist_ally_before > 0:
+            if dist_ally_after < dist_ally_before:
+                reward += presets.get('step_closer_team', 0.0)
             else:
-                reward += abs(normalized_food) * presets.get('step_farther_food', 0.0)
-            
-            if dist_enemy_before > 0:
-                delta_enemy = dist_enemy_before - dist_enemy_after
-                normalized_enemy = delta_enemy / bs
-                if normalized_enemy > 0:
-                    reward += normalized_enemy * presets.get('step_closer_enemy', 0.0)
-                else:
-                    reward += abs(normalized_enemy) * presets.get('step_farther_enemy', 0.0)
-            
-            if dist_ally_before > 0:
-                delta_ally = dist_ally_before - dist_ally_after
-                normalized_ally = delta_ally / bs
-                if normalized_ally > 0:
-                    reward += normalized_ally * presets.get('step_closer_team', 0.0)
-                else:
-                    reward += abs(normalized_ally) * presets.get('step_farther_team', 0.0)
+                reward += presets.get('step_farther_team', 0.0)
 
         h = snake.head
         if h.x < bs or h.x > self.config.map_width_px - bs or \
@@ -149,7 +133,7 @@ class GameEngine:
                 continue
 
             dist_food_before = self._get_closest_food_dist(snake)
-            dist_enemy_before = self._get_closest_enemy_dist(snake)
+            closest_enemy_before = self._get_closest_enemy_info(snake) # (SnakeObj, dist)
             dist_ally_before = self._get_closest_ally_dist(snake)
 
             next_head = snake.move_head_prediction(self.config.block_size)
@@ -187,21 +171,16 @@ class GameEngine:
                 victim_snake.take_damage(snake.damage_dealt)
                 snake.take_damage(victim_snake.victim_return_damage)
 
+                presets = self.config.reward_presets.get(snake.role, {})
+
                 if victim_snake.team_name == snake.team_name and victim_snake is not snake:
-                     presets = self.config.reward_presets.get(snake.role, {})
                      snake.pending_reward += presets.get('friendly_fire', -10.0)
 
                 if victim_snake.team_name != snake.team_name:
-                    presets = self.config.reward_presets.get(snake.role, {})
                     snake.pending_reward += presets.get('damage_dealt_reward', 0.0)
-                    
                     if victim_snake.victim_return_damage > 0:
                         v_presets = self.config.reward_presets.get(victim_snake.role, {})
                         victim_snake.pending_reward += v_presets.get('damage_dealt_reward', 0.0)
-
-                    if not snake.is_alive:
-                         v_presets = self.config.reward_presets.get(victim_snake.role, {})
-                         victim_snake.pending_reward += v_presets.get('kill_reward', 0.0)
 
                 if snake.collision_survivable:
                     snake.take_damage(snake.self_damage)
@@ -224,8 +203,9 @@ class GameEngine:
                                     self.team_stats[victim_snake.team_name].deaths += 1
                                     
                                     if victim_snake.team_name != snake.team_name:
-                                        presets = self.config.reward_presets.get(snake.role, {})
-                                        snake.pending_reward += presets.get('kill_reward', 0.0)
+                                        kill_key = f"kill_{victim_snake.role.lower()}"
+                                        kill_reward = presets.get(kill_key, presets.get('kill_generic', 5.0))
+                                        snake.pending_reward += kill_reward
 
                                 victim_snake.score = max(0, len(victim_snake.body) - self.config.initial_snake_length)
                                 
@@ -267,16 +247,18 @@ class GameEngine:
                 if death_reason == DeathReason.ENEMY_COLLISION and victim_snake and victim_snake.is_alive:
                     if victim_snake.team_name != snake.team_name:
                          v_presets = self.config.reward_presets.get(victim_snake.role, {})
-                         victim_snake.pending_reward += v_presets.get('kill_reward', 0.0)
+                         kill_key = f"kill_{snake.role.lower()}"
+                         kill_reward = v_presets.get(kill_key, v_presets.get('kill_generic', 5.0))
+                         victim_snake.pending_reward += kill_reward
 
             dist_food_after = self._get_closest_food_dist(snake)
-            dist_enemy_after = self._get_closest_enemy_dist(snake)
+            closest_enemy_after = self._get_closest_enemy_info(snake)
             dist_ally_after = self._get_closest_ally_dist(snake)
 
             reward += self._calculate_reward(
                 snake, 
                 dist_food_before, dist_food_after, 
-                dist_enemy_before, dist_enemy_after,
+                closest_enemy_before, closest_enemy_after,
                 dist_ally_before, dist_ally_after,
                 event
             )
@@ -298,14 +280,17 @@ class GameEngine:
         dists = [math.sqrt((snake.head.x - f.x)**2 + (snake.head.y - f.y)**2) for f in self.foods]
         return min(dists)
     
-    def _get_closest_enemy_dist(self, snake):
+    def _get_closest_enemy_info(self, snake):
         min_dist = float('inf')
+        closest_s = None
         for other in self.snakes:
             if other is not snake and other.is_alive and other.team_name != snake.team_name:
                 dist = math.sqrt((snake.head.x - other.head.x)**2 + (snake.head.y - other.head.y)**2)
                 if dist < min_dist:
                     min_dist = dist
-        return min_dist if min_dist != float('inf') else 0
+                    closest_s = other
+        
+        return (closest_s, min_dist if min_dist != float('inf') else 0)
 
     def _get_closest_ally_dist(self, snake):
         min_dist = float('inf')

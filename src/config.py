@@ -64,7 +64,7 @@ class GameConfig:
             max_hp=200.0,
             start_hp=200.0,
             damage_dealt=20.0,
-            victim_return_damage=50.0,
+            victim_return_damage=60.0,
             self_damage=100.0,
             collision_survivable=False
         )
@@ -72,50 +72,58 @@ class GameConfig:
     
     reward_presets: Dict[str, Dict[str, float]] = field(default_factory=lambda: {
         "Harvester": {
-            "food": 25.0,
+            "food": 30.0,
             "starve": -50.0,
             "death": -20.0,
-            "kill_reward": 5.0,
-            "damage_dealt_reward": 0.0,
+            "kill_generic": 5.0, 
+            "kill_harvester": 5.0,
+            "kill_hunter": 10.0,
+            "kill_defender": 10.0,
             "friendly_fire": -50.0,
-            "step_closer_food": 1.5,
-            "step_farther_food": -2.0,
-            "step_closer_enemy": 0.0,
-            "step_farther_enemy": 0.0,
-            "step_closer_team": 0.0,
-            "step_farther_team": 0.0,
-            "wall_penalty": -0.5,
+            "step_closer_food": 2.0,
+            "step_farther_food": -2.5,
+            "wall_penalty": -1.0,
             "idle_penalty": -0.1
         },
         "Hunter": {
-            "food": 10.0,           
-            "starve": -30.0,
+            "food": 15.0,           
+            "starve": -40.0,
             "death": -50.0,
-            "kill_reward": 100.0,
+            
+            "kill_harvester": 150.0,
+            "kill_hunter": 100.0,   
+            "kill_defender": -50.0, 
+            
             "damage_dealt_reward": 5.0,
             "friendly_fire": -100.0,
             "step_closer_food": 0.5, 
-            "step_farther_food": -0.1,
-            "step_closer_enemy": 3.5,
-            "step_farther_enemy": -3.5,
-            "step_closer_team": -0.5,
-            "step_farther_team": 0.5,
+            "step_farther_food": -0.2,
+            
+            "step_closer_enemy_harvester": 4.0, 
+            "step_closer_enemy_hunter": 2.0,
+            "step_closer_enemy_defender": -2.0,
+            
             "wall_penalty": -0.5,
             "idle_penalty": -0.1
         },
         "Defender": {
-            "food": 8.0,
+            "food": 10.0,
             "starve": -50.0,
             "death": -30.0,
-            "kill_reward": 50.0,
+            
+            "kill_harvester": 30.0,
+            "kill_hunter": 80.0, 
+            "kill_defender": 20.0,
+            
             "damage_dealt_reward": 15.0,
             "friendly_fire": -50.0,
             "step_closer_food": 0.5,
-            "step_farther_food": -0.5,
-            "step_closer_enemy": 1.0,
-            "step_farther_enemy": 0.0,
-            "step_closer_team": 1.5,
+            
+            "step_closer_enemy_hunter": 3.0,
+            "step_closer_enemy_harvester": 0.0,
+            "step_closer_team": 1.5, 
             "step_farther_team": -1.5,
+            
             "wall_penalty": -0.2,
             "idle_penalty": 0.0
         }

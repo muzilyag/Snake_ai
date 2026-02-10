@@ -4,7 +4,7 @@ import torch.nn.functional as F
 import os
 
 class SnakeNet(nn.Module):
-    def __init__(self, input_size=14, hidden_size=256, output_size=3):
+    def __init__(self, input_size=23, hidden_size=256, output_size=3):
         super().__init__()
         self.linear1 = nn.Linear(input_size, hidden_size)
         self.linear2 = nn.Linear(hidden_size, output_size)
@@ -27,7 +27,11 @@ class SnakeNet(nn.Module):
     def load(self, file_name='model.pth'):
         path = os.path.join('./model', file_name)
         if os.path.exists(path):
-            self.load_state_dict(torch.load(path))
-            self.eval()
-            return True
+            try:
+                self.load_state_dict(torch.load(path))
+                self.eval()
+                return True
+            except RuntimeError:
+                print(f"--- Model {file_name} mismatch (input size changed). Starting fresh. ---")
+                return False
         return False
