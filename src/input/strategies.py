@@ -47,23 +47,26 @@ class MultiAgentStrategy:
         
         surroundings = []
         
+        grid = getattr(state_dto, 'grid', None)
+        
         for pt in points_to_check:
-            is_wall = (pt.x < 0 or pt.x >= self.config.map_width_px or 
-                       pt.y < 0 or pt.y >= self.config.map_height_px)
+            gx = pt.x // bs
+            gy = pt.y // bs
+            
+            is_wall = (gx < 0 or gx >= self.config.grid_width or 
+                       gy < 0 or gy >= self.config.grid_height)
             is_friend = False
             enemy_role = None
             
-            if not is_wall:
-                for s in state_dto.snakes:
-                    if s.is_alive and pt in s.body:
-                        if s.team_name == snake.team_name:
-                            is_friend = True
-                        else:
-                            enemy_role = s.role
-                        break
+            if not is_wall and grid:
+                cell_obj = grid[gx][gy]
+                if cell_obj and hasattr(cell_obj, 'team_name'): 
+                    if cell_obj.team_name == snake.team_name:
+                        is_friend = True
+                    else:
+                        enemy_role = cell_obj.role
             
             surroundings.append(float(is_wall or is_friend))
-            
             surroundings.append(float(enemy_role == "Harvester"))
             surroundings.append(float(enemy_role == "Hunter"))
             surroundings.append(float(enemy_role == "Defender"))
@@ -84,22 +87,7 @@ class MultiAgentStrategy:
         ]
         
         ally = self._get_closest_ally(snake, state_dto.snakes)
-        ally_inputs = [0.0, 0.0, 0.0] # [Ally Straight, Ally Right, Ally Left] - вектор
         
-        if ally:
-             dx = ally.head.x - head.x
-             dy = ally.head.y - head.y
-             
-             dist = (dx**2 + dy**2)**0.5
-             is_close = 1.0 if dist < (bs * 4) else 0.0
-             ally_inputs = [is_close, 0.0, 0.0]
-             
-             ally_inputs = [
-                 float(ally.head.x < head.x),
-                 float(ally.head.x > head.x),
-                 float(ally.head.y < head.y)
-             ]
-
         ally_dirs = [0.0, 0.0, 0.0]
         if ally:
             ally_dirs[0] = float(ally.head.x < head.x)

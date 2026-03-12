@@ -14,6 +14,8 @@ class GameEngine:
         self.snakes = []
         self.foods = []
         
+        self.grid = [[None for _ in range(config.grid_height)] for _ in range(config.grid_width)]
+        
         self.team_stats = {t.name: TeamStats() for t in config.teams}
         self.analytics = AnalyticsEngine(config)
         
@@ -21,6 +23,8 @@ class GameEngine:
             for i in range(team.count):
                 role = team.agent_roles[i]
                 self.snakes.append(self._create_initial_snake(team, role))
+        
+        self._rebuild_grid()
         
         while len(self.foods) < self.config.food_count:
             self._place_food()
@@ -34,14 +38,16 @@ class GameEngine:
         while True:
             x = random.randint(2, self.config.grid_width - 3) * self.config.block_size
             y = random.randint(2, self.config.grid_height - 3) * self.config.block_size
-            p = Point(x, y)
-            occupied = any(p in s.body for s in self.snakes if s != snake) or any(p == f for f in self.foods)
-            if not occupied:
+            
+            gx = x // self.config.block_size
+            gy = y // self.config.block_size
+            
+            if self.grid[gx][gy] is None:
                 role_cfg = self.config.role_settings.get(snake.role, self.config.role_settings["Harvester"])
-                snake.head = p
+                snake.head = Point(x, y)
                 snake.body = []
                 for i in range(self.config.initial_snake_length):
-                    snake.body.append(Point(p.x - (i * self.config.block_size), p.y))
+                    snake.body.append(Point(x - (i * self.config.block_size), y))
                 snake.direction = random.choice([1, 2, 3, 4])
                 snake.is_alive = True
                 snake.score = 0
@@ -50,22 +56,53 @@ class GameEngine:
                 snake.pending_reward = 0.0
                 break
 
+    def _rebuild_grid(self):
+        w = self.config.grid_width
+        h = self.config.grid_height
+        bs = self.config.block_size
+        
+        self.grid = [[None for _ in range(h)] for _ in range(w)]
+        
+        for s in self.snakes:
+            if not s.is_alive: continue
+            for pt in s.body:
+                gx = pt.x // bs
+                gy = pt.y // bs
+                if 0 <= gx < w and 0 <= gy < h:
+                    self.grid[gx][gy] = s
+        
+        for f in self.foods:
+            gx = f.x // bs
+            gy = f.y // bs
+            if 0 <= gx < w and 0 <= gy < h:
+                self.grid[gx][gy] = "FOOD"
+
     def _place_food(self):
         attempts = 0
+        w = self.config.grid_width
+        h = self.config.grid_height
+        bs = self.config.block_size
+        
         while attempts < 100:
-            x = random.randint(0, self.config.grid_width - 1) * self.config.block_size
-            y = random.randint(0, self.config.grid_height - 1) * self.config.block_size
-            p = Point(x, y)
-            occupied = any(p in s.body for s in self.snakes) or (p in self.foods)
-            if not occupied:
-                self.foods.append(p)
+            gx = random.randint(0, w - 1)
+            gy = random.randint(0, h - 1)
+            
+            if self.grid[gx][gy] is None:
+                x = gx * bs
+                y = gy * bs
+                self.foods.append(Point(x, y))
+                self.grid[gx][gy] = "FOOD"
                 break
             attempts += 1
 
     def _get_snake_at_body_pos(self, point):
-        for s in self.snakes:
-            if s.is_alive and point in s.body:
-                return s
+        gx = point.x // self.config.block_size
+        gy = point.y // self.config.block_size
+        
+        if 0 <= gx < self.config.grid_width and 0 <= gy < self.config.grid_height:
+            obj = self.grid[gx][gy]
+            if isinstance(obj, Snake) and obj.is_alive:
+                return obj
         return None
 
     def _calculate_reward(self, snake, 
@@ -96,9 +133,7 @@ class GameEngine:
         
         if enemy_snake and dist_before > 0:
             role_key_closer = f"step_closer_enemy_{enemy_snake.role.lower()}" if hasattr(enemy_snake, 'role') else "step_closer_enemy"
-            
             val_closer = presets.get(role_key_closer, presets.get('step_closer_enemy', 0.0))
-            
             val_farther = -val_closer * 0.5
             
             if dist_after < dist_before:
@@ -121,6 +156,9 @@ class GameEngine:
 
     def step(self, actions):
         self.iteration += 1
+        
+        self._rebuild_grid()
+        
         results = []
         
         for t_name in self.team_stats:
@@ -133,7 +171,7 @@ class GameEngine:
                 continue
 
             dist_food_before = self._get_closest_food_dist(snake)
-            closest_enemy_before = self._get_closest_enemy_info(snake) # (SnakeObj, dist)
+            closest_enemy_before = self._get_closest_enemy_info(snake)
             dist_ally_before = self._get_closest_ally_dist(snake)
 
             next_head = snake.move_head_prediction(self.config.block_size)
@@ -267,7 +305,7 @@ class GameEngine:
             self.team_stats[snake.team_name].current_score += current_len
             
             results.append((reward, done, snake.score))
-
+        
         for t_name in self.team_stats:
             if self.team_stats[t_name].current_score > self.team_stats[t_name].record:
                 self.team_stats[t_name].record = self.team_stats[t_name].current_score
@@ -318,4 +356,6 @@ class GameEngine:
             total_time=time.time() - self.start_time, 
             total_deaths=self.total_deaths
         )
-        return GameStateDTO(self.snakes, self.foods, g_stats, self.team_stats, False)
+        dto = GameStateDTO(self.snakes, self.foods, g_stats, self.team_stats, False)
+        dto.grid = self.grid 
+        return dto
