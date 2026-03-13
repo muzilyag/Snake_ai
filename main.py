@@ -2,18 +2,19 @@ import random
 import os
 from src import *
 
-def main():
+def main() -> None:
     ui = PygameRenderer(SETTINGS)
     engine = GameEngine(SETTINGS)
     strategy = MultiAgentStrategy(SETTINGS)
     
-    models_pool = {t.name: [] for t in SETTINGS.teams}
-    rl_trainers = {}
+    models = []
+    rl_trainers = []
     
     for team in SETTINGS.teams:
-        m = SnakeNet()
-        models_pool[team.name] = [m for _ in range(team.count)]
-        rl_trainers[team.name] = RLTrainer(m)
+        for _ in range(team.count):
+            m = SnakeNet()
+            models.append(m)
+            rl_trainers.append(RLTrainer(m))
 
     epsilon = 80
     current_fps = SETTINGS.fps_train
@@ -46,13 +47,15 @@ def main():
                 print("Stats file not created yet.")
 
         if inputs['save']:
-            for t_name, trainer in rl_trainers.items():
-                trainer.model.save(f"{t_name}_model.pth")
+            for i, trainer in enumerate(rl_trainers):
+                snake = engine.snakes[i]
+                trainer.model.save(f"{snake.team_name}_{snake.role}_{i}_model.pth")
             print("All models saved.")
             
         if inputs['load']:
-            for t_name, trainer in rl_trainers.items():
-                trainer.model.load(f"{t_name}_model.pth")
+            for i, trainer in enumerate(rl_trainers):
+                snake = engine.snakes[i]
+                trainer.model.load(f"{snake.team_name}_{snake.role}_{i}_model.pth")
             print("All models loaded.")
 
         state_dto = engine.get_state()
@@ -60,7 +63,7 @@ def main():
         old_states = []
         
         for i, snake in enumerate(engine.snakes):
-            model = models_pool[snake.team_name][i % len(models_pool[snake.team_name])]
+            model = models[i]
             sensors = strategy._get_sensors(snake, state_dto)
             old_states.append(sensors)
             
@@ -79,7 +82,7 @@ def main():
             reward, done, score = results[i]
             
             if snake.brain_type == "RL":
-                trainer = rl_trainers[snake.team_name]
+                trainer = rl_trainers[i]
                 new_sensors = strategy._get_sensors(snake, new_state_dto)
                 trainer.train_step(old_states[i], indices[i], reward, new_sensors, done)
                 if done and epsilon > 5: epsilon -= 0.05
@@ -90,7 +93,6 @@ def main():
         else:
             if engine.iteration % 1000 == 0:
                 ui.render(new_state_dto)
-                # print(f"Iter: {engine.iteration} (Headless)") 
 
 if __name__ == "__main__":
     main()

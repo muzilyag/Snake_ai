@@ -2,7 +2,7 @@ import pygame
 from src.core.types import Direction
 
 class PygameRenderer:
-    def __init__(self, config):
+    def __init__(self, config) -> None:
         self.config = config
         pygame.init()
         self.font = pygame.font.SysFont('arial', 16)
@@ -11,7 +11,7 @@ class PygameRenderer:
         pygame.display.set_caption('Multi-Brain Snake AI (HP & Roles)')
         self.clock = pygame.time.Clock()
 
-    def render(self, state):
+    def render(self, state) -> None:
         self._handle_events()
         self.display.fill(self.config.colors.BACKGROUND)
         self._draw_grid()
@@ -19,17 +19,17 @@ class PygameRenderer:
         self._draw_sidebar(state)
         pygame.display.flip()
         
-    def _handle_events(self):
+    def _handle_events(self) -> None:
         pygame.event.pump()
 
-    def _draw_grid(self):
+    def _draw_grid(self) -> None:
         for x in range(0, self.config.map_width_px + 1, self.config.block_size):
             pygame.draw.line(self.display, self.config.colors.GRID, (x, 0), (x, self.config.map_height_px))
         for y in range(0, self.config.map_height_px + 1, self.config.block_size):
             pygame.draw.line(self.display, self.config.colors.GRID, (0, y), (self.config.map_width_px, y))
         pygame.draw.line(self.display, (0,0,0), (self.config.map_width_px, 0), (self.config.map_width_px, self.config.map_height_px), 2)
 
-    def _draw_world(self, state):
+    def _draw_world(self, state) -> None:
         bs = self.config.block_size
         
         for food in state.foods:
@@ -63,7 +63,7 @@ class PygameRenderer:
             else:
                 pygame.draw.circle(self.display, (50, 50, 255), (center_x, center_y), 3)
 
-    def _draw_sidebar(self, state):
+    def _draw_sidebar(self, state) -> None:
         x_offset = self.config.map_width_px + 10
         y = 10
         
@@ -119,14 +119,14 @@ class PygameRenderer:
             
             y += 10
 
-    def get_input(self):
+    def get_input(self) -> dict[str, bool]:
         res = {
             'quit': False, 
             'toggle_speed': False, 
             'save': False, 
             'load': False,
             'toggle_graph': False,
-            'toggle_visuals': False # Новая кнопка V
+            'toggle_visuals': False
         }
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
