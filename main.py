@@ -1,8 +1,11 @@
 import random
 import os
 from src import *
+import torch
 
-def main() -> None:
+torch.set_num_threads(1)
+
+def main():
     ui = PygameRenderer(SETTINGS)
     engine = GameEngine(SETTINGS)
     strategy = MultiAgentStrategy(SETTINGS)
@@ -12,7 +15,8 @@ def main() -> None:
     
     for team in SETTINGS.teams:
         for _ in range(team.count):
-            m = SnakeNet()
+            m = SnakeNet(input_size=28)
+            m = torch.jit.script(m)
             models.append(m)
             rl_trainers.append(RLTrainer(m))
 
@@ -25,7 +29,8 @@ def main() -> None:
 
     while True:
         inputs = ui.get_input()
-        if inputs['quit']: break
+        if inputs['quit']: 
+            break
         
         if inputs['toggle_speed']:
             current_fps = SETTINGS.fps_watch if current_fps == SETTINGS.fps_train else SETTINGS.fps_train
@@ -85,11 +90,13 @@ def main() -> None:
                 trainer = rl_trainers[i]
                 new_sensors = strategy._get_sensors(snake, new_state_dto)
                 trainer.train_step(old_states[i], indices[i], reward, new_sensors, done)
-                if done and epsilon > 5: epsilon -= 0.05
+                if done and epsilon > 5: 
+                    epsilon -= 0.05
 
         if visuals_on:
             ui.render(new_state_dto)
-            if current_fps > 0: ui.clock.tick(current_fps)
+            if current_fps > 0: 
+                ui.clock.tick(current_fps)
         else:
             if engine.iteration % 1000 == 0:
                 ui.render(new_state_dto)

@@ -2,9 +2,9 @@ import random
 import time
 import math
 from typing import Any
-from src.core.types import Point, GameStateDTO, GlobalStats, TeamStats, DeathReason
-from src.core.snake import Snake
-from src.core.analytics import AnalyticsEngine
+from .types import Point, GameStateDTO, GlobalStats, TeamStats, DeathReason
+from .snake import Snake
+from .analytics import AnalyticsEngine
 
 class GameEngine:
     def __init__(self, config: Any) -> None:
@@ -23,13 +23,11 @@ class GameEngine:
         
         for team in self.config.teams:
             for i in range(team.count):
-                role: str = team.agent_roles[i]
-                self.snakes.append(self._create_initial_snake(team, role))
+                self.snakes.append(self._create_initial_snake(team, team.agent_roles[i]))
         
         self._rebuild_grid()
         
-        while len(self.foods) < self.config.food_count:
-            self._place_food()
+        while len(self.foods) < self.config.food_count: self._place_food()
 
     def _create_initial_snake(self, team_config: Any, role: str = "Harvester") -> Snake:
         x: int = random.randint(5, self.config.grid_width - 5) * self.config.block_size
@@ -43,19 +41,20 @@ class GameEngine:
             gx: int = x // self.config.block_size
             gy: int = y // self.config.block_size
             
-            if self.grid[gx][gy] is None:
-                role_cfg: Any = self.config.role_settings.get(snake.role, self.config.role_settings["Harvester"])
-                init_len: int = getattr(role_cfg, 'initial_length', self.config.initial_snake_length)
-                
-                snake.head = Point(x, y)
-                snake.body = [Point(x - (i * self.config.block_size), y) for i in range(init_len)]
-                snake.direction = random.choice([1, 2, 3, 4])
-                snake.is_alive = True
-                snake.score = 0
-                snake.hp = role_cfg.start_hp
-                snake.steps_alive = 0
-                snake.pending_reward = 0.0
-                break
+            if self.grid[gx][gy] is not None: continue
+
+            role_cfg: Any = self.config.role_settings.get(snake.role, self.config.role_settings["Harvester"])
+            init_len: int = getattr(role_cfg, 'initial_length', self.config.initial_snake_length)
+            
+            snake.head = Point(x, y)
+            snake.body = [Point(x - (i * self.config.block_size), y) for i in range(init_len)]
+            snake.direction = random.choice([1, 2, 3, 4])
+            snake.is_alive = True
+            snake.score = 0
+            snake.hp = role_cfg.start_hp
+            snake.steps_alive = 0
+            snake.pending_reward = 0.0
+            break
 
     def _rebuild_grid(self) -> None:
         w: int = self.config.grid_width
@@ -65,19 +64,18 @@ class GameEngine:
         self.grid = [[None for _ in range(h)] for _ in range(w)]
         
         for s in self.snakes:
-            if not s.is_alive:
-                continue
+            if not s.is_alive: continue
             for pt in s.body:
                 gx: int = pt.x // bs
                 gy: int = pt.y // bs
-                if 0 <= gx < w and 0 <= gy < h:
-                    self.grid[gx][gy] = s
+                if not (0 <= gx < w and 0 <= gy < h): continue
+                self.grid[gx][gy] = s
         
         for f in self.foods:
             gx: int = f.x // bs
             gy: int = f.y // bs
-            if 0 <= gx < w and 0 <= gy < h:
-                self.grid[gx][gy] = "FOOD"
+            if not (0 <= gx < w and 0 <= gy < h): continue
+            self.grid[gx][gy] = "FOOD"
 
     def _place_food(self) -> None:
         w: int = self.config.grid_width
@@ -87,19 +85,17 @@ class GameEngine:
         for _ in range(100):
             gx: int = random.randint(0, w - 1)
             gy: int = random.randint(0, h - 1)
-            if self.grid[gx][gy] is None:
-                self.foods.append(Point(gx * bs, gy * bs))
-                self.grid[gx][gy] = "FOOD"
-                break
+            if self.grid[gx][gy] is not None: continue
+            self.foods.append(Point(gx * bs, gy * bs))
+            self.grid[gx][gy] = "FOOD"
+            break
 
     def _get_snake_at_body_pos(self, point: Point) -> Snake | None:
-        gx: int = point.x // self.config.block_size
-        gy: int = point.y // self.config.block_size
+        gx, gy = point.x // self.config.block_size, point.y // self.config.block_size
         
-        if 0 <= gx < self.config.grid_width and 0 <= gy < self.config.grid_height:
-            obj: Snake | str | None = self.grid[gx][gy]
-            if isinstance(obj, Snake) and obj.is_alive:
-                return obj
+        if (0 <= gx < self.config.grid_width and 0 <= gy < self.config.grid_height and 
+            isinstance(obj := self.grid[gx][gy], Snake) and obj.is_alive):
+            return obj
         return None
 
     def _calculate_reward(self, snake: Snake, dist_food_before: float, dist_food_after: float, 
@@ -133,16 +129,10 @@ class GameEngine:
             role_key: str = f"step_closer_enemy_{enemy_role}"
             val_closer: float = presets.get(role_key, presets.get('step_closer_enemy', 0.0))
             
-            if dist_after < dist_before:
-                reward += val_closer
-            else:
-                reward -= val_closer * 0.5
+            reward += val_closer if dist_after < dist_before else -val_closer * 0.5
             
         if dist_ally_before > 0:
-            if dist_ally_after < dist_ally_before:
-                reward += presets.get('step_closer_team', 0.0)
-            else:
-                reward += presets.get('step_farther_team', 0.0)
+            reward += presets.get('step_closer_team', 0.0) if dist_ally_after < dist_ally_before else presets.get('step_farther_team', 0.0)
 
         bs: int = self.config.block_size
         if not (bs <= snake.head.x <= self.config.map_width_px - bs and 
@@ -152,28 +142,27 @@ class GameEngine:
         return reward
 
     def _handle_combat(self, snake: Snake, victim: Snake, next_head: Point) -> tuple[DeathReason, bool]:
-        victim.take_damage(snake.damage_dealt)
-        snake.take_damage(victim.victim_return_damage)
-
-        presets: dict[str, float] = self.config.reward_presets.get(snake.role, {})
+        is_self: bool = (victim is snake)
         v_role: str = getattr(victim, 'role', '')
+        presets: dict[str, float] = self.config.reward_presets.get(snake.role, {})
         
-        if victim.team_name == snake.team_name:
-            snake.pending_reward += presets.get('friendly_fire', -10.0)
+        if is_self:
+            snake.take_damage(snake.self_damage)
         else:
-            snake.pending_reward += presets.get('damage_dealt_reward', 0.0)
-            if victim.victim_return_damage > 0:
-                v_presets: dict[str, float] = self.config.reward_presets.get(v_role, {})
-                victim.pending_reward += v_presets.get('damage_dealt_reward', 0.0)
+            victim.take_damage(snake.damage_dealt)
+            snake.take_damage(victim.victim_return_damage)
+            
+            if victim.team_name == snake.team_name:
+                snake.pending_reward += presets.get('friendly_fire', -10.0)
+            else:
+                snake.pending_reward += presets.get('damage_dealt_reward', 0.0)
+                if victim.victim_return_damage > 0:
+                    v_presets: dict[str, float] = self.config.reward_presets.get(v_role, {})
+                    victim.pending_reward += v_presets.get('damage_dealt_reward', 0.0)
 
-        if not snake.collision_survivable:
+        if not snake.collision_survivable or not snake.is_alive:
             snake.is_alive = False
-            return DeathReason.ENEMY_COLLISION, True
-
-        snake.take_damage(snake.self_damage)
-        if not snake.is_alive or victim is snake:
-            snake.is_alive = False
-            return DeathReason.SELF_COLLISION if victim is snake else DeathReason.ENEMY_COLLISION, True
+            return DeathReason.SELF_COLLISION if is_self else DeathReason.ENEMY_COLLISION, True
 
         if next_head in victim.body:
             cut_idx: int = victim.body.index(next_head)
@@ -181,10 +170,12 @@ class GameEngine:
             
             if not victim.body:
                 victim.is_alive = False
-                self.analytics.log_death(victim.team_name, DeathReason.ENEMY_COLLISION)
+                reason: DeathReason = DeathReason.SELF_COLLISION if is_self else DeathReason.ENEMY_COLLISION
+                self.analytics.log_death(victim.team_name, reason)
                 self.total_deaths += 1
                 self.team_stats[victim.team_name].deaths += 1
-                if victim.team_name != snake.team_name:
+                
+                if not is_self and victim.team_name != snake.team_name:
                     snake.pending_reward += presets.get(f"kill_{v_role.lower()}", presets.get('kill_generic', 5.0))
 
             v_role_cfg: Any = self.config.role_settings.get(v_role, {})
@@ -197,7 +188,7 @@ class GameEngine:
             return DeathReason.ALIVE, False
 
         snake.is_alive = False
-        return DeathReason.ENEMY_COLLISION, True
+        return DeathReason.SELF_COLLISION if is_self else DeathReason.ENEMY_COLLISION, True
 
     def step(self, actions: list[int]) -> tuple[list[tuple[float, bool, int]], bool]:
         self.iteration += 1
@@ -306,9 +297,9 @@ class GameEngine:
         for s in self.snakes:
             if s is not snake and s.is_alive and s.team_name != snake.team_name:
                 d: float = math.hypot(snake.head.x - s.head.x, snake.head.y - s.head.y)
-                if d < min_dist:
-                    min_dist = d
-                    closest = s
+                if d >= min_dist: continue
+                min_dist = d
+                closest = s
                     
         return closest, min_dist if min_dist != float('inf') else 0.0
 
@@ -317,8 +308,8 @@ class GameEngine:
         for s in self.snakes:
             if s is not snake and s.is_alive and s.team_name == snake.team_name:
                 d: float = math.hypot(snake.head.x - s.head.x, snake.head.y - s.head.y)
-                if d < min_dist:
-                    min_dist = d
+                if d >= min_dist: continue
+                min_dist = d
                     
         return min_dist if min_dist != float('inf') else 0.0
 
