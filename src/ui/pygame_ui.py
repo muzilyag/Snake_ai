@@ -1,22 +1,15 @@
 import pygame
 from typing import Any
-from src.core.types import Direction
 
 class PygameRenderer:
-    config: Any
-    font: pygame.font.Font
-    font_bold: pygame.font.Font
-    display: pygame.Surface
-    clock: pygame.time.Clock
-
     def __init__(self, config: Any) -> None:
-        self.config = config
+        self.config: Any = config
         pygame.init()
-        self.font = pygame.font.SysFont('arial', 16)
-        self.font_bold = pygame.font.SysFont('arial', 16, bold=True)
-        self.display = pygame.display.set_mode((config.window_width, config.window_height))
+        self.font: pygame.font.Font = pygame.font.SysFont('arial', 16)
+        self.font_bold: pygame.font.Font = pygame.font.SysFont('arial', 16, bold=True)
+        self.display: pygame.Surface = pygame.display.set_mode((config.window_width, config.window_height))
         pygame.display.set_caption('Multi-Brain Snake AI (HP & Roles)')
-        self.clock = pygame.time.Clock()
+        self.clock: pygame.time.Clock = pygame.time.Clock()
 
     def render(self, state: Any) -> None:
         self._handle_events()
@@ -49,8 +42,7 @@ class PygameRenderer:
             pygame.draw.rect(self.display, self.config.colors.FOOD, (food.x, food.y, bs, bs))
             
         for snake in state.snakes:
-            if not snake.is_alive: 
-                continue
+            if not snake.is_alive: continue
             
             for i, pt in enumerate(snake.body):
                 rect: tuple[int, int, int, int] = (pt.x, pt.y, bs, bs)
@@ -100,8 +92,8 @@ class PygameRenderer:
         
         alive_by_team: dict[str, list[Any]] = {t.name: [] for t in self.config.teams}
         for s in state.snakes:
-            if s.is_alive and s.team_name in alive_by_team:
-                alive_by_team[s.team_name].append(s)
+            if not (s.is_alive and s.team_name in alive_by_team): continue
+            alive_by_team[s.team_name].append(s)
         
         for name, stats in state.team_stats.items():
             team_conf: Any = next((t for t in self.config.teams if t.name == name), None)

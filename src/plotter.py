@@ -14,34 +14,21 @@ except ImportError:
     from src.config import SETTINGS
 
 class SnakePlotter:
-    filename: str
-    data: dict[str, dict[str, list[tuple[int, float]]]]
-    teams: list[str]
-    metrics: list[str]
-    selected_teams: dict[str, bool]
-    selected_metric: str
-    show_raw: bool
-    show_trend: bool
-    min_iter: int
-    max_iter: float
-    fig: plt.Figure
-    ax: plt.Axes
-
     def __init__(self, csv_filename: str) -> None:
-        self.filename = csv_filename
-        self.data = {}
-        self.teams = []
-        self.metrics = []
+        self.filename: str = csv_filename
+        self.data: dict[str, dict[str, list[tuple[int, float]]]] = {}
+        self.teams: list[str] = []
+        self.metrics: list[str] = []
         
         self._load_data()
         
-        self.selected_teams = {t: True for t in self.teams}
-        self.selected_metric = self.metrics[0] if self.metrics else "Apples"
-        self.show_raw = True
-        self.show_trend = True
+        self.selected_teams: dict[str, bool] = {t: True for t in self.teams}
+        self.selected_metric: str = self.metrics[0] if self.metrics else "Apples"
+        self.show_raw: bool = True
+        self.show_trend: bool = True
         
-        self.min_iter = 0
-        self.max_iter = float('inf')
+        self.min_iter: int = 0
+        self.max_iter: float = float('inf')
         
         self.fig, self.ax = plt.subplots(figsize=(14, 8))
         plt.subplots_adjust(left=0.25, bottom=0.2, right=0.95, top=0.9)
@@ -201,10 +188,10 @@ def run_standalone() -> None:
     stats_dir: str = "stats"
     if os.path.exists(stats_dir):
         return None
-    if os.path.exists(os.path.join("..", "stats")):
-            stats_dir = os.path.join("..", "stats")
+    elif os.path.exists(os.path.join("..", "stats")):
+        stats_dir = os.path.join("..", "stats")
     else:
-        return
+        return None
 
     files: list[str] = glob.glob(os.path.join(stats_dir, "*.csv"))
     files.sort(key=os.path.getmtime, reverse=True)

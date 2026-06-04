@@ -17,6 +17,7 @@ class RoleConfig:
     victim_return_damage: float = 0.0
     self_damage: float = 100.0
     collision_survivable: bool = False
+    initial_length: int = 1
 
 @dataclass
 class TeamConfig:
@@ -50,7 +51,8 @@ class GameConfig:
             damage_dealt=10.0,
             victim_return_damage=0.0,
             self_damage=100.0,
-            collision_survivable=False
+            collision_survivable=False,
+            initial_length=1
         ),
         "Hunter": RoleConfig(
             max_hp=150.0,
@@ -58,7 +60,8 @@ class GameConfig:
             damage_dealt=50.0,
             victim_return_damage=10.0,
             self_damage=15.0,
-            collision_survivable=True
+            collision_survivable=True,
+            initial_length=1
         ),
         "Defender": RoleConfig(
             max_hp=200.0,
@@ -66,7 +69,8 @@ class GameConfig:
             damage_dealt=20.0,
             victim_return_damage=60.0,
             self_damage=100.0,
-            collision_survivable=False
+            collision_survivable=False,
+            initial_length=6
         )
     })
     
@@ -89,20 +93,16 @@ class GameConfig:
             "food": 15.0,           
             "starve": -40.0,
             "death": -50.0,
-            
             "kill_harvester": 150.0,
             "kill_hunter": 100.0,   
             "kill_defender": -50.0, 
-            
             "damage_dealt_reward": 5.0,
             "friendly_fire": -100.0,
             "step_closer_food": 0.5, 
             "step_farther_food": -0.2,
-            
             "step_closer_enemy_harvester": 4.0, 
             "step_closer_enemy_hunter": 2.0,
             "step_closer_enemy_defender": -2.0,
-            
             "wall_penalty": -0.5,
             "idle_penalty": -0.1
         },
@@ -110,49 +110,93 @@ class GameConfig:
             "food": 10.0,
             "starve": -50.0,
             "death": -30.0,
-            
             "kill_harvester": 30.0,
             "kill_hunter": 80.0, 
             "kill_defender": 20.0,
-            
             "damage_dealt_reward": 15.0,
             "friendly_fire": -50.0,
             "step_closer_food": 0.5,
-            
             "step_closer_enemy_hunter": 3.0,
             "step_closer_enemy_harvester": 0.0,
             "step_closer_team": 1.5, 
             "step_farther_team": -1.5,
-            
             "wall_penalty": -0.2,
             "idle_penalty": 0.0
         }
     })
 
     teams: List[TeamConfig] = field(default_factory=lambda: [
+        # TeamConfig(
+        #     name="Green Squad", 
+        #     count=3, 
+        #     color=(0, 180, 0), 
+        #     brain_type="RL", 
+        #     reward_mode="linear",
+        #     agent_roles=["Harvester", "Harvester", "Defender"]
+        # ),
+        # TeamConfig(
+        #     name="Blue Squad", 
+        #     count=3, 
+        #     color=(0, 0, 180), 
+        #     brain_type="RL", 
+        #     reward_mode="linear",
+        #     agent_roles=["Harvester", "Harvester", "Hunter"]
+        # ),
+        # TeamConfig(
+        #     name="Red Squad", 
+        #     count=3, 
+        #     color=(180, 0, 0), 
+        #     brain_type="RL", 
+        #     reward_mode="linear",
+        #     agent_roles=["Harvester", "Harvester", "Harvester"]
+        # )
         TeamConfig(
             name="Green Squad", 
-            count=3, 
+            count=2, 
             color=(0, 180, 0), 
             brain_type="RL", 
             reward_mode="linear",
-            agent_roles=["Harvester", "Harvester", "Defender"]
+            agent_roles=["Harvester", "Defender"]
         ),
         TeamConfig(
             name="Blue Squad", 
-            count=3, 
+            count=2, 
             color=(0, 0, 180), 
             brain_type="RL", 
             reward_mode="linear",
-            agent_roles=["Harvester", "Harvester", "Hunter"]
+            agent_roles=["Harvester", "Hunter"]
         ),
         TeamConfig(
             name="Red Squad", 
-            count=3, 
+            count=2, 
             color=(180, 0, 0), 
             brain_type="RL", 
             reward_mode="linear",
-            agent_roles=["Harvester", "Harvester", "Harvester"]
+            agent_roles=["Harvester", "Harvester"]
+        ),
+        TeamConfig(
+            name="Orange Squad", 
+            count=2, 
+            color=(255, 150, 0), 
+            brain_type="RL", 
+            reward_mode="linear",
+            agent_roles=["Defender", "Defender"]
+        ),
+        TeamConfig(
+            name="Purple Squad", 
+            count=2, 
+            color=(128, 0, 128), 
+            brain_type="RL", 
+            reward_mode="linear",
+            agent_roles=["Hunter", "Hunter"]
+        ),
+        TeamConfig(
+            name="Yellow Squad", 
+            count=2, 
+            color=(247, 215, 32), 
+            brain_type="RL", 
+            reward_mode="linear",
+            agent_roles=["Hunter", "Defender"]
         )
     ])
     colors: Color = field(default_factory=Color)

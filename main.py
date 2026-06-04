@@ -14,11 +14,12 @@ def main():
     rl_trainers = []
     
     for team in SETTINGS.teams:
-        for _ in range(team.count):
+        for i in range(team.count):
             m = SnakeNet(input_size=28)
-            m = torch.jit.script(m)
-            models.append(m)
-            rl_trainers.append(RLTrainer(m))
+            # m = torch.jit.script(m) 
+            models.append(m)            
+            agent_role = team.agent_roles[i]
+            rl_trainers.append(RLTrainer(m, role=agent_role))
 
     epsilon = 80
     current_fps = SETTINGS.fps_train
@@ -84,22 +85,21 @@ def main():
         new_state_dto = engine.get_state()
         
         for i, snake in enumerate(engine.snakes):
-            reward, done, score = results[i]
+            reward, done, _ = results[i]
             
-            if snake.brain_type == "RL":
-                trainer = rl_trainers[i]
-                new_sensors = strategy._get_sensors(snake, new_state_dto)
-                trainer.train_step(old_states[i], indices[i], reward, new_sensors, done)
-                if done and epsilon > 5: 
-                    epsilon -= 0.05
+            if snake.brain_type != "RL": continue
+            trainer = rl_trainers[i]
+            new_sensors = strategy._get_sensors(snake, new_state_dto)
+            trainer.train_step(old_states[i], indices[i], reward, new_sensors, done)
+            if not done and epsilon <= 5: continue 
+            epsilon -= 0.05
 
         if visuals_on:
             ui.render(new_state_dto)
-            if current_fps > 0: 
+            if current_fps > 0:
                 ui.clock.tick(current_fps)
-        else:
-            if engine.iteration % 1000 == 0:
-                ui.render(new_state_dto)
+        elif engine.iteration % 1000 == 0:
+            ui.render(new_state_dto)
 
 if __name__ == "__main__":
     main()
