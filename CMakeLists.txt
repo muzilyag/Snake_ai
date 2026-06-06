@@ -14,7 +14,9 @@ find_package(pybind11 CONFIG REQUIRED PATHS ${pybind11_DIR})
 pybind11_add_module(snake_cpp 
     src/engine/pybind_module.cpp 
     src/engine/vec_env.cpp 
-    src/engine/snake.cpp
+    src/engine/systems/physics.cpp
+    src/engine/systems/radar.cpp
+    src/engine/systems/rewards.cpp
 )
 
 set_target_properties(snake_cpp PROPERTIES SUFFIX ".pyd")

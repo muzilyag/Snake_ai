@@ -29,9 +29,10 @@ class ActorNet(nn.Module):
     def forward(self, x: torch.Tensor, role_name: str) -> Categorical:
         device = x.device
         role_idx: int = self.role_to_idx.get(role_name, 0)
-        role_tensor: torch.Tensor = torch.tensor([role_idx] * x.size(0), dtype=torch.long, device=device)
         
-        role_emb: torch.Tensor = self.role_embedding(role_tensor)
+        role_tensor = torch.full((x.size(0),), role_idx, dtype=torch.long, device=device)
+        
+        role_emb = self.role_embedding(role_tensor)
         x = torch.cat([x, role_emb], dim=1)
         
         x = F.tanh(self.linear1(x))
@@ -43,12 +44,12 @@ class ActorNet(nn.Module):
 class CriticNet(nn.Module):
     def __init__(self, global_state_size: int, hidden_size: int = 64):
         super().__init__()
-        
         self.linear1 = layer_init(nn.Linear(global_state_size, hidden_size))
         self.linear2 = layer_init(nn.Linear(hidden_size, hidden_size))
-        self.value_head = layer_init(nn.Linear(hidden_size, 1), std=1.0)
+        self.critic_head = layer_init(nn.Linear(hidden_size, 1), std=1.0)
 
-    def forward(self, global_x: torch.Tensor) -> torch.Tensor:
-        x = F.tanh(self.linear1(global_x))
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        x = F.tanh(self.linear1(x))
         x = F.tanh(self.linear2(x))
-        return self.value_head(x)
+        value = self.critic_head(x)
+        return value

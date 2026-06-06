@@ -15,7 +15,7 @@ from src.utils.metrics import MetricsLogger
 from src.utils.monitor import GameMonitor
 from src.plotter import SnakePlotter
 
-torch.set_num_threads(1)
+torch.set_num_threads(8)
 
 def main() -> None:
     total_envs = SETTINGS.total_envs
@@ -66,6 +66,25 @@ def main() -> None:
                     SnakePlotter(latest_file)
                 else:
                     print("No CSV files found in stats folder.")
+
+            # --- БЛОК СОХРАНЕНИЯ И ЗАГРУЗКИ ---
+            if inputs.get('save'):
+                os.makedirs("weights", exist_ok=True)
+                for agent_id, agent in agents.items():
+                    agent.save("weights")
+                print(f"[{vec_env.main_env.iteration}] УСПЕХ: Веса всех агентов сохранены в папку 'weights'!")
+
+            if inputs.get('load'):
+                if os.path.exists("weights"):
+                    try:
+                        for agent_id, agent in agents.items():
+                            agent.load("weights")
+                        print(f"[{vec_env.main_env.iteration}] УСПЕХ: Веса успешно загружены! Агенты готовы.")
+                    except Exception as e:
+                        print(f"Ошибка при загрузке весов: {e}")
+                else:
+                    print("Папка 'weights' не найдена! Сначала сохраните модель (кнопка S).")
+            # ----------------------------------
 
             global_states = vec_env.get_global_states()
             

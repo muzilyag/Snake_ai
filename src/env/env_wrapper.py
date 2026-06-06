@@ -36,14 +36,10 @@ class CppVecEnv:
         for team in config.teams:
             team_color = getattr(team, 'color', None)
             if team_color is None:
-                if "Red" in team.name:
-                    team_color = (255, 50, 50)
-                elif "Green" in team.name:
-                    team_color = (50, 255, 50)
-                elif "Blue" in team.name:
-                    team_color = (50, 50, 255)
-                else:
-                    team_color = (200, 200, 200)
+                if "Red" in team.name: team_color = (255, 50, 50)
+                elif "Green" in team.name: team_color = (50, 255, 50)
+                elif "Blue" in team.name: team_color = (50, 50, 255)
+                else: team_color = (200, 200, 200)
 
             for i, role in enumerate(team.agent_roles):
                 a_id = f"{team.name}_{role}_{i}"
@@ -51,8 +47,21 @@ class CppVecEnv:
                 self.snakes[a_id] = DummySnake(a_id, team.name, role, team_color)
         
         self.num_snakes = len(self.agent_ids)
+        
+        flat_cfg = []
+        roles = ["Harvester", "Hunter", "Defender"]
+        for r in roles:
+            p = config.reward_presets.get(r, {})
+            flat_cfg.extend([
+                p.get('food', 0.0), p.get('death', 0.0), p.get('starve', 0.0),
+                p.get('wall_penalty', 0.0), p.get('idle_penalty', 0.0),
+                p.get('kill_harvester', 0.0), p.get('kill_hunter', 0.0), p.get('kill_defender', 0.0),
+                p.get('friendly_fire', 0.0)
+            ])
+            
         self.engine = snake_cpp.VecSnakeEngine(
-            num_envs, self.num_snakes, config.grid_width, config.grid_height, config.block_size, config.food_count
+            num_envs, self.num_snakes, config.grid_width, config.grid_height, 
+            config.block_size, config.food_count, flat_cfg
         )
         
         self.last_global_states = None
@@ -61,8 +70,7 @@ class CppVecEnv:
         self.foods = []
 
     def _sync_render_state(self, render_np=None):
-        if self.last_global_states is None: 
-            return
+        if self.last_global_states is None: return
         state = self.last_global_states[0]
         
         for s, agent_id in enumerate(self.agent_ids):
@@ -79,8 +87,7 @@ class CppVecEnv:
                     body_matrix = render_np[0][s]
                     for i in range(len(body_matrix)):
                         bx, by = int(body_matrix[i][0]), int(body_matrix[i][1])
-                        if bx == -1000: 
-                            break
+                        if bx == -1000: break
                         snake.body.append(DummyPoint(bx, by))
             else:
                 snake.head.x = -1000
@@ -101,7 +108,6 @@ class CppVecEnv:
         
         obs_np, global_state_np, _, dones_np, render_np, scores_np, events_np, killers_np = self.engine.step(actions_zeros)
         self.last_global_states = global_state_np
-        
         self._sync_render_state(render_np)
         
         obs_list = []
@@ -117,89 +123,36 @@ class CppVecEnv:
             for s, agent_id in enumerate(self.agent_ids):
                 actions_flat[e * self.num_snakes + s] = actions_list[e].get(agent_id, 0)
                 
-        obs_np, global_state_np, _, dones_np, render_np, scores_np, events_np, killers_np = self.engine.step(actions_flat)
+        obs_np, global_state_np, rew_np, don_np, render_np, sco_np, ev_np, _ = self.engine.step(actions_flat)
         self.last_global_states = global_state_np
         
         if render:
             self._sync_render_state(render_np)
             
-        event_map = {0: 'move', 1: 'food', 2: 'death', 3: 'starve', 4: 'wall', 5: 'self'}
-        
         obs_all, rew_all, don_all, inf_all = [], [], [], []
+        ev_map = {0: 'move', 1: 'food', 2: 'death', 3: 'starve', 4: 'wall', 5: 'self'}
+        
         for e in range(self.num_envs):
-            obs_dict = {}
-            rew_dict = {a_id: 0.0 for a_id in self.agent_ids}
-            don_dict = {}
-            inf_dict = {}
-            
+            obs_dict, rew_dict, don_dict, inf_dict = {}, {}, {}, {}
             for s, agent_id in enumerate(self.agent_ids):
                 idx = e * self.num_snakes + s
                 obs_dict[agent_id] = obs_np[idx]
-                don_dict[agent_id] = bool(dones_np[idx])
+                rew_dict[agent_id] = float(rew_np[idx])
+                don_dict[agent_id] = bool(don_np[idx])
                 
-                event_code = int(events_np[idx])
-                event_str = event_map.get(event_code, 'move')
-                hp_val = float(global_state_np[e][s * 4 + 3])
-                
+                ev_code = int(ev_np[idx])
                 role = self.snakes[agent_id].role
-                team_name = self.snakes[agent_id].team_name
-                presets = self.config.reward_presets.get(role, {})
-                
-                if event_code == 1:
-                    food_reward = presets.get('food', 10.0)
-                    rew_dict[agent_id] += food_reward
-                    
-                    for ally_id in self.agent_ids:
-                        if ally_id != agent_id and self.snakes[ally_id].team_name == team_name:
-                            rew_dict[ally_id] += food_reward * 0.5  
-                            
-                elif event_code == 2:
-                    rew_dict[agent_id] += presets.get('death', -50.0)
-                    killer_idx = int(killers_np[idx])
-                    if killer_idx >= 0 and killer_idx != s:
-                        killer_agent_id = self.agent_ids[killer_idx]
-                        killer_role = self.snakes[killer_agent_id].role
-                        killer_team = self.snakes[killer_agent_id].team_name
-                        killer_presets = self.config.reward_presets.get(killer_role, {})
-                        
-                        reward_key = f"kill_{role.lower()}"
-                        kill_reward = killer_presets.get(reward_key, 0.0)
-                        rew_dict[killer_agent_id] += kill_reward
-                        
-                        for ally_id in self.agent_ids:
-                            if ally_id != killer_agent_id and self.snakes[ally_id].team_name == killer_team:
-                                rew_dict[ally_id] += kill_reward * 0.5 
-                                
-                elif event_code == 3:
-                    rew_dict[agent_id] += presets.get('starve', -50.0)
-                elif event_code == 4:
-                    rew_dict[agent_id] += presets.get('death', -50.0) + presets.get('wall_penalty', -1.0)
-                elif event_code == 5:
-                    rew_dict[agent_id] += presets.get('death', -50.0)
-                else:
-                    rew_dict[agent_id] += presets.get('idle_penalty', -0.01)
-                    
-                role_max_hp = 100.0
-                if role == "Hunter":
-                    role_max_hp = 150.0
-                elif role == "Defender":
-                    role_max_hp = 200.0
-
                 inf_dict[agent_id] = {
-                    'score': int(scores_np[idx]),
-                    'hp': hp_val,
-                    'max_hp': role_max_hp,
-                    'event': event_str
+                    'score': int(sco_np[idx]),
+                    'hp': float(global_state_np[e][s * 4 + 3]),
+                    'max_hp': 150.0 if role == "Hunter" else (200.0 if role == "Defender" else 100.0),
+                    'event': ev_map.get(ev_code, 'move')
                 }
                 
-                if event_code == 2:
-                    inf_dict[agent_id]['death_reason'] = DeathReason.ENEMY_COLLISION
-                elif event_code == 3:
-                    inf_dict[agent_id]['death_reason'] = DeathReason.STARVATION
-                elif event_code == 4:
-                    inf_dict[agent_id]['death_reason'] = DeathReason.WALL_COLLISION
-                elif event_code == 5:
-                    inf_dict[agent_id]['death_reason'] = DeathReason.SELF_COLLISION
+                if ev_code == 2: inf_dict[agent_id]['death_reason'] = DeathReason.ENEMY_COLLISION
+                elif ev_code == 3: inf_dict[agent_id]['death_reason'] = DeathReason.STARVATION
+                elif ev_code == 4: inf_dict[agent_id]['death_reason'] = DeathReason.WALL_COLLISION
+                elif ev_code == 5: inf_dict[agent_id]['death_reason'] = DeathReason.SELF_COLLISION
             
             obs_all.append(obs_dict)
             rew_all.append(rew_dict)

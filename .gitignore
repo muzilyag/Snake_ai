@@ -1,4 +1,5 @@
 model/
+weights/
 stats/
 *.csv
 
