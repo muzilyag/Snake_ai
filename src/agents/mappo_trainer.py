@@ -22,7 +22,6 @@ class MAPPOTrainer:
         }
 
     def compute_gae(self, rewards: np.ndarray, values: np.ndarray, dones: np.ndarray, next_values: np.ndarray) -> Tuple[torch.Tensor, torch.Tensor]:
-        # Теперь сюда приходят матрицы [num_steps, num_envs]
         num_steps, num_envs = rewards.shape
         returns = np.zeros_like(rewards)
         advantages = np.zeros_like(rewards)
@@ -39,7 +38,6 @@ class MAPPOTrainer:
             advantages[step] = gae
             returns[step] = gae + values[step]
             
-        # Расплющиваем обратно в 1D для нейросети
         return torch.tensor(returns.flatten(), dtype=torch.float, device=self.device), torch.tensor(advantages.flatten(), dtype=torch.float, device=self.device)
 
     def train_agent(self, agent_id: str, next_global_obs: List[np.ndarray], epochs: int = 4) -> None:
@@ -52,7 +50,6 @@ class MAPPOTrainer:
         num_envs = len(next_global_obs)
         num_steps = len(buffer.rewards) // num_envs
 
-        # Конвертируем плоские списки в правильные 2D-матрицы
         np_rewards = np.array(buffer.rewards, dtype=np.float32).reshape(num_steps, num_envs)
         np_values = np.array(buffer.values, dtype=np.float32).reshape(num_steps, num_envs)
         np_dones = np.array(buffer.dones, dtype=np.float32).reshape(num_steps, num_envs)
