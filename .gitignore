@@ -1,3 +1,17 @@
 model/
 stats/
+*.csv
+
 __pycache__/
+venv/
+
+*bak/
+*.bak
+
+.vscode/
+
+build/
+*.pyd
+*.so
+*.dll
+*.dylib

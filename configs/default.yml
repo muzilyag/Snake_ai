@@ -1,0 +1,132 @@
+total_envs: 64
+# field & game settings
+grid_width: 40
+grid_height: 40
+block_size: 20
+sidebar_width: 300
+fps_train: 0
+fps_watch: 15
+food_count: 6
+initial_snake_length: 1
+# heal & decay
+hp_decay_per_step: 0.5
+food_heal_amount: 30.0
+stats_interval: 1000
+# snake's settings
+colors:
+  BACKGROUND: [255, 255, 255]
+  GRID: [230, 230, 230]
+  TEXT: [0, 0, 0]
+  SIDEBAR_BG: [245, 245, 245]
+  FOOD: [200, 0, 0]
+
+role_settings:
+  Harvester:
+    max_hp: 100.0
+    start_hp: 100.0
+    damage_dealt: 10.0
+    victim_return_damage: 0.0
+    self_damage: 100.0
+    collision_survivable: false
+    initial_length: 1
+  Hunter:
+    max_hp: 150.0
+    start_hp: 150.0
+    damage_dealt: 50.0
+    victim_return_damage: 10.0
+    self_damage: 15.0
+    collision_survivable: true
+    initial_length: 1
+  Defender:
+    max_hp: 200.0
+    start_hp: 200.0
+    damage_dealt: 20.0
+    victim_return_damage: 60.0
+    self_damage: 100.0
+    collision_survivable: false
+    initial_length: 6
+
+reward_presets:
+  Harvester:
+    food: 30.0
+    starve: -50.0
+    death: -20.0
+    kill_generic: 5.0
+    kill_harvester: 5.0
+    kill_hunter: 10.0
+    kill_defender: 10.0
+    friendly_fire: -50.0
+    step_closer_food: 2.0
+    step_farther_food: -2.5
+    wall_penalty: -1.0
+    idle_penalty: -0.1
+  Hunter:
+    food: 15.0
+    starve: -40.0
+    death: -50.0
+    kill_harvester: 150.0
+    kill_hunter: 100.0
+    kill_defender: -50.0
+    damage_dealt_reward: 5.0
+    friendly_fire: -100.0
+    step_closer_food: 0.5
+    step_farther_food: -0.2
+    step_closer_enemy_harvester: 4.0
+    step_closer_enemy_hunter: 2.0
+    step_closer_enemy_defender: -2.0
+    wall_penalty: -0.5
+    idle_penalty: -0.1
+  Defender:
+    food: 10.0
+    starve: -50.0
+    death: -30.0
+    kill_harvester: 30.0
+    kill_hunter: 80.0
+    kill_defender: 20.0
+    damage_dealt_reward: 15.0
+    friendly_fire: -50.0
+    step_closer_food: 0.5
+    step_closer_enemy_hunter: 3.0
+    step_closer_enemy_harvester: 0.0
+    step_closer_team: 1.5
+    step_farther_team: -1.5
+    wall_penalty: -0.2
+    idle_penalty: 0.0
+
+teams:
+  - name: "Green Squad"
+    count: 2
+    color: [0, 180, 0]
+    brain_type: "RL"
+    reward_mode: "linear"
+    agent_roles: ["Harvester", "Defender"]
+  - name: "Blue Squad"
+    count: 2
+    color: [0, 0, 180]
+    brain_type: "RL"
+    reward_mode: "linear"
+    agent_roles: ["Harvester", "Hunter"]
+  - name: "Red Squad"
+    count: 2
+    color: [180, 0, 0]
+    brain_type: "RL"
+    reward_mode: "linear"
+    agent_roles: ["Harvester", "Harvester"]
+  - name: "Orange Squad"
+    count: 2
+    color: [255, 150, 0]
+    brain_type: "RL"
+    reward_mode: "linear"
+    agent_roles: ["Defender", "Defender"]
+  - name: "Purple Squad"
+    count: 2
+    color: [128, 0, 128]
+    brain_type: "RL"
+    reward_mode: "linear"
+    agent_roles: ["Hunter", "Hunter"]
+  - name: "Yellow Squad"
+    count: 2
+    color: [247, 215, 32]
+    brain_type: "RL"
+    reward_mode: "linear"
+    agent_roles: ["Hunter", "Defender"]

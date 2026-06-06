@@ -1,8 +1,25 @@
+from collections import namedtuple
+from enum import IntEnum
 from typing import Any
-from .types import Direction, Point
+
+Point = namedtuple('Point', 'x, y')
+
+class Direction(IntEnum):
+    UP = 1
+    RIGHT = 2
+    DOWN = 3
+    LEFT = 4
+
+class DeathReason(IntEnum):
+    ALIVE = 0
+    WALL_COLLISION = 1
+    SELF_COLLISION = 2
+    ENEMY_COLLISION = 3
+    STARVATION = 4
 
 class Snake:
-    def __init__(self, x: int, y: int, team_config: Any, role: str, config: Any) -> None:
+    def __init__(self, agent_id: str, x: int, y: int, team_config: Any, role: str, config: Any) -> None:
+        self.id: str = agent_id
         self.head: Point = Point(x, y)
         self.direction: Direction = Direction.RIGHT
         self.team_name: str = team_config.name
@@ -26,19 +43,21 @@ class Snake:
         self.deaths: int = 0
         
         self.brain_type: str = team_config.brain_type
-        self.reward_mode: str = team_config.reward_mode
         self.pending_reward: float = 0.0
 
-    def set_direction(self, direction: Direction) -> None:
-        if not self.is_alive: return None   
-        opposites: dict[Direction, Direction] = {
-            Direction.UP: Direction.DOWN,
-            Direction.DOWN: Direction.UP,
-            Direction.LEFT: Direction.RIGHT,
-            Direction.RIGHT: Direction.LEFT
-        }
-        if opposites.get(direction) == self.direction: return None   
-        self.direction = direction
+    def set_action(self, action_idx: int) -> None:
+        if not self.is_alive:
+            return
+            
+        clock_wise: list[int] = [Direction.RIGHT, Direction.DOWN, Direction.LEFT, Direction.UP]
+        idx: int = clock_wise.index(self.direction)
+        
+        if action_idx == 0:
+            self.direction = Direction(clock_wise[idx])
+        elif action_idx == 1:
+            self.direction = Direction(clock_wise[(idx + 1) % 4])
+        elif action_idx == 2:
+            self.direction = Direction(clock_wise[(idx - 1) % 4])
 
     def move_head_prediction(self, block_size: int) -> Point:
         x: int = self.head.x
@@ -61,8 +80,10 @@ class Snake:
 
     def take_damage(self, amount: float) -> None:
         self.hp = max(0.0, self.hp - amount)
-        if self.hp == 0.0: self.is_alive = False
+        if self.hp <= 0.0:
+            self.is_alive = False
 
     def heal(self, amount: float) -> None:
-        if not self.is_alive: return None
+        if not self.is_alive:
+            return
         self.hp = min(self.max_hp, self.hp + amount)

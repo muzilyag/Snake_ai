@@ -187,7 +187,7 @@ class SnakePlotter:
 def run_standalone() -> None:
     stats_dir: str = "stats"
     if os.path.exists(stats_dir):
-        return None
+        pass
     elif os.path.exists(os.path.join("..", "stats")):
         stats_dir = os.path.join("..", "stats")
     else:
