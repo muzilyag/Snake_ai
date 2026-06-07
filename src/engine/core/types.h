@@ -1,6 +1,6 @@
 #ifndef TYPES_H
 #define TYPES_H
-#include <vector>
+#include <deque>
 
 struct Point 
 {
@@ -21,7 +21,7 @@ struct SnakeData
     int score;
     int direction;
     Point head;
-    std::vector<Point> body;
+    std::deque<Point> body;
 };
 
 struct RewardConfig 

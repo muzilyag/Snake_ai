@@ -36,6 +36,8 @@ VecSnakeEngine::VecSnakeEngine(int num_envs, int num_snakes_per_env, int grid_w,
     killers_buffer.resize(num_envs * num_snakes_per_env, -1);
     
     spatial_grid.resize(num_envs * grid_width * grid_height, -1);
+    roles_buffer.resize(num_envs * num_snakes_per_env, 0);
+    teams_buffer.resize(num_envs * num_snakes_per_env, 0);
 
     env_snakes.resize(num_envs);
     env_foods.resize(num_envs, std::vector<Point>(num_foods));
@@ -45,7 +47,7 @@ VecSnakeEngine::VecSnakeEngine(int num_envs, int num_snakes_per_env, int grid_w,
 
 void VecSnakeEngine::reset_all() 
 {
-    float max_hps[3] = {100.0f, 150.0f, 200.0f};
+    constexpr float max_hps[3] = {100.0f, 150.0f, 200.0f};
 
     for (int i = 0; i < num_envs; ++i) 
     {
@@ -65,6 +67,9 @@ void VecSnakeEngine::reset_all()
                 snake.body.push_back({snake.head.x - b * block_size, snake.head.y});
             }
             env_snakes[i].push_back(snake);
+            
+            roles_buffer[i * num_snakes_per_env + s] = snake.role_idx;
+            teams_buffer[i * num_snakes_per_env + s] = snake.team_idx;
         }
         for (int f = 0; f < num_foods; ++f) 
         {
@@ -90,7 +95,7 @@ py::tuple VecSnakeEngine::step(py::array_t<int> actions_array)
                           actions_ptr, env_snakes, env_foods, env_rngs, 
                           dones_buffer.data(), events_buffer.data(), killers_buffer.data(), spatial_grid.data());
 
-    RewardSystem::calculate(num_envs, num_snakes_per_env, env_snakes, events_buffer.data(), killers_buffer.data(), reward_config, rewards_buffer.data());
+    RewardSystem::calculate(num_envs, num_snakes_per_env, roles_buffer.data(), teams_buffer.data(), events_buffer.data(), killers_buffer.data(), reward_config, rewards_buffer.data());
 
     RadarSystem::generate(num_envs, num_snakes_per_env, grid_width, grid_height, block_size, num_foods, env_snakes, env_foods, obs_buffer.data(), global_state_buffer.data(), spatial_grid.data());
 
@@ -128,7 +133,7 @@ py::tuple VecSnakeEngine::step(py::array_t<int> actions_array)
                     snake.body.push_back({snake.head.x - b * block_size, snake.head.y});
                 }
                 snake.direction = 2;
-                float max_hps[3] = {100.0f, 150.0f, 200.0f};
+                constexpr float max_hps[3] = {100.0f, 150.0f, 200.0f};
                 snake.hp = max_hps[snake.role_idx];
                 snake.score = 0;
                 snake.is_alive = true;

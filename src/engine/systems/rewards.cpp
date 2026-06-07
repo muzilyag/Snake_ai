@@ -1,72 +1,78 @@
 #include "rewards.h"
+#include <unordered_map>
 
-namespace RewardSystem {
+namespace RewardSystem 
+{
     void calculate(int num_envs, int snakes_per_env,
-                   const std::vector<std::vector<SnakeData>>& snakes,
+                   const int* roles, const int* teams,
                    const int* events, const int* killers,
                    const RewardConfig& config, float* rewards) 
     {
         for (int e = 0; e < num_envs; ++e) 
         {
+            std::unordered_map<int, float> team_bonuses;
+
             for (int s = 0; s < snakes_per_env; ++s) 
             {
-                int idx = e * snakes_per_env + s;
-                int event = events[idx];
-                int role = snakes[e][s].role_idx;
-                int team = snakes[e][s].team_idx;
+                const int idx = e * snakes_per_env + s;
+                const int event = events[idx];
+                const int role = roles[idx];
+                const int team = teams[idx];
                 
                 float base_reward = 0.0f;
-                if (event == 1)
-                { 
-                    base_reward += config.params[role][0];
-                }
-                else if (event == 2) 
+                
+                switch (event) 
                 {
-                    base_reward += config.params[role][1];
-                    int killer = killers[idx];
-                    if (killer >= 0 && killer != s) 
+                    case 1:
                     {
-                        int k_role = snakes[e][killer].role_idx;
-                        int k_team = snakes[e][killer].team_idx;
-                        float kill_rew = config.params[k_role][5 + role];
-                        rewards[e * snakes_per_env + killer] += kill_rew;
-                        for (int os = 0; os < snakes_per_env; ++os) 
-                        {
-                            if (os != killer && snakes[e][os].team_idx == k_team) 
-                            {
-                                rewards[e * snakes_per_env + os] += kill_rew * 0.5f;
-                            }
-                        }
+                        base_reward += config.params[role][0];
+                        const float bonus = config.params[role][0] * 0.5f;
+                        team_bonuses[team] += bonus;
+                        base_reward -= bonus;
+                        break;
                     }
-                }
-                else if (event == 3)
-                { 
-                    base_reward += config.params[role][2];
-                }
-                else if (event == 4)
-                { 
-                    base_reward += config.params[role][1] + config.params[role][3];
-                }
-                else if (event == 5)
-                { 
-                    base_reward += config.params[role][1];
-                }
-                else
-                { 
-                    base_reward += config.params[role][4];
+                    case 2:
+                    {
+                        base_reward += config.params[role][1];
+                        const int killer = killers[idx];
+                        if (killer >= 0 && killer != s) 
+                        {
+                            const int killer_idx = e * snakes_per_env + killer;
+                            const int k_role = roles[killer_idx];
+                            const int k_team = teams[killer_idx];
+                            const float kill_rew = config.params[k_role][5 + role];
+                            const float k_bonus = kill_rew * 0.5f;
+                            
+                            rewards[killer_idx] += kill_rew - k_bonus;
+                            team_bonuses[k_team] += k_bonus;
+                        }
+                        break;
+                    }
+                    case 3:
+                        base_reward += config.params[role][2];
+                        break;
+                    case 4:
+                        base_reward += config.params[role][1] + config.params[role][3];
+                        break;
+                    case 5:
+                        base_reward += config.params[role][1];
+                        break;
+                    default:
+                        base_reward += config.params[role][4];
+                        break;
                 }
 
                 rewards[idx] += base_reward;
+            }
 
-                if (event == 1) 
+            for (int s = 0; s < snakes_per_env; ++s) 
+            {
+                const int idx = e * snakes_per_env + s;
+                const int team = teams[idx];
+                auto it = team_bonuses.find(team);
+                if (it != team_bonuses.end()) 
                 {
-                    for (int os = 0; os < snakes_per_env; ++os) 
-                    {
-                        if (os != s && snakes[e][os].team_idx == team) 
-                        {
-                            rewards[e * snakes_per_env + os] += config.params[role][0] * 0.5f;
-                        }
-                    }
+                    rewards[idx] += it->second;
                 }
             }
         }

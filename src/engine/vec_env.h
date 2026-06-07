@@ -31,6 +31,8 @@ class VecSnakeEngine
     std::vector<int> events_buffer;
     std::vector<int> killers_buffer;
     std::vector<int> spatial_grid;
+    std::vector<int> roles_buffer;
+    std::vector<int> teams_buffer;
 
     std::vector<std::vector<SnakeData>> env_snakes;
     std::vector<std::vector<Point>> env_foods;
