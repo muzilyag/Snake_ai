@@ -1,4 +1,5 @@
 import csv
+import os, pandas as pd, csv
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List
@@ -10,10 +11,9 @@ class MetricsLogger:
         self.config: Any = config
         self.stats_dir: Path = Path("stats")
         self.stats_dir.mkdir(parents=True, exist_ok=True)
-        
         timestamp: str = datetime.now().strftime("%Y%m%d_%H%M%S")
         self.csv_filename: Path = self.stats_dir / f"session_{timestamp}.csv"
-        
+        self.current_csv_path: str = str(self.csv_filename)
         self.interval_causes: Dict[str, Dict[DeathReason, int]] = self._init_interval_causes()
         self.interval_apples: Dict[str, int] = {team.name: 0 for team in self.config.teams}
         self.interval_deaths: Dict[str, int] = {team.name: 0 for team in self.config.teams}
@@ -78,3 +78,18 @@ class MetricsLogger:
         self.interval_causes = self._init_interval_causes()
         self.interval_apples = {team.name: 0 for team in self.config.teams}
         self.interval_deaths = {team.name: 0 for team in self.config.teams}
+
+    def set_csv_file(self, file_path: str, current_iteration: int) -> None:        
+        if hasattr(self, 'file') and not self.file.closed:
+            self.file.close()
+            
+        if os.path.exists(file_path):
+            df = pd.read_csv(file_path)
+            df = df[df['Iteration'] <= current_iteration]
+            df.to_csv(file_path, index=False)
+            
+        self.current_csv_path = file_path
+        
+        self.file = open(file_path, 'a', newline='')
+        if hasattr(self, 'headers'):
+            self.writer = csv.DictWriter(self.file, fieldnames=self.headers)

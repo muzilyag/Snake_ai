@@ -14,6 +14,7 @@ from src.ui.renderer import PygameRenderer
 from src.utils.metrics import MetricsLogger
 from src.utils.monitor import GameMonitor
 from src.plotter import SnakePlotter
+from src.utils.checkpointer import CheckpointManager
 
 torch.set_num_threads(8)
 
@@ -40,6 +41,9 @@ def main() -> None:
 
     trainer = MAPPOTrainer(agents, device)
     
+    # Инициализация менеджера чекпоинтов
+    checkpointer = CheckpointManager(agents, monitor, logger)
+    
     current_fps = SETTINGS.fps_train
     visuals_on = True
     
@@ -59,32 +63,25 @@ def main() -> None:
             if inputs['toggle_visuals']:
                 visuals_on = not visuals_on
                 print(f"Visuals: {'ON' if visuals_on else 'OFF'}")
+                
             if inputs['toggle_graph']:
-                files = glob.glob(os.path.join("stats", "*.csv"))
-                if files:
-                    latest_file = max(files, key=os.path.getmtime)
-                    SnakePlotter(latest_file)
-                else:
-                    print("No CSV files found in stats folder.")
+                SnakePlotter(logger.current_csv_path)
 
-            # --- БЛОК СОХРАНЕНИЯ И ЗАГРУЗКИ ---
             if inputs.get('save'):
-                os.makedirs("weights", exist_ok=True)
-                for agent_id, agent in agents.items():
-                    agent.save("weights")
-                print(f"[{vec_env.main_env.iteration}] УСПЕХ: Веса всех агентов сохранены в папку 'weights'!")
+                checkpointer.save(logger.current_csv_path)
 
             if inputs.get('load'):
-                if os.path.exists("weights"):
+                files = glob.glob(os.path.join("checkpoints", "*.json"))
+                if files:
+                    latest_chk = max(files, key=os.path.getmtime)
                     try:
-                        for agent_id, agent in agents.items():
-                            agent.load("weights")
-                        print(f"[{vec_env.main_env.iteration}] УСПЕХ: Веса успешно загружены! Агенты готовы.")
+                        vec_env.main_env.iteration = checkpointer.monitor.iteration
+                        logger.current_csv_path = checkpointer.load(latest_chk)
+                        vec_env.main_env.iteration = checkpointer.monitor.iteration
                     except Exception as e:
-                        print(f"Ошибка при загрузке весов: {e}")
+                        print(f"Ошибка загрузки: {e}")
                 else:
-                    print("Папка 'weights' не найдена! Сначала сохраните модель (кнопка S).")
-            # ----------------------------------
+                    print("Папка 'checkpoints' пуста или не найдена!")
 
             global_states = vec_env.get_global_states()
             

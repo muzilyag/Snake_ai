@@ -2,6 +2,7 @@ model/
 weights/
 stats/
 *.csv
+checkpoints/
 
 __pycache__/
 venv/

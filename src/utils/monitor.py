@@ -1,6 +1,7 @@
 import time
 from typing import Any, Dict, Optional
 from src.env.entity import DeathReason
+import time
 
 class GameMonitor:
     def __init__(self, config: Any) -> None:
@@ -51,3 +52,22 @@ class GameMonitor:
                 stats['record'] = stats['current_score']
             if stats['record'] > self.global_record:
                 self.global_record = stats['record']
+
+    def get_state(self) -> dict:
+        return {
+            "iteration": getattr(self, 'iteration', 0),
+            "global_deaths": getattr(self, 'global_deaths', 0),
+            "global_record": getattr(self, 'global_record', 0),
+            "elapsed_time": getattr(self, 'elapsed_time', 0.0),
+            "team_stats": getattr(self, 'team_stats', {})
+        }
+
+    def load_state(self, state: dict) -> None:
+        self.iteration = state.get("iteration", 0)
+        self.global_deaths = state.get("global_deaths", 0)
+        self.global_record = state.get("global_record", 0)
+        self.team_stats = state.get("team_stats", getattr(self, 'team_stats', {}))
+        
+        saved_elapsed = state.get("elapsed_time", 0.0)
+        if hasattr(self, 'start_time'):
+            self.start_time = time.time() - saved_elapsed
