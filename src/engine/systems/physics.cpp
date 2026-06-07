@@ -5,36 +5,30 @@
 
 namespace PhysicsSystem 
 {
-    void move_snake(SnakeData& snake, int block_size, bool ate_food) 
+    void move_snake(Point* body, int& body_len, Point head, int max_body_len, int block_size, int direction, bool ate_food) 
     {
-        if (!ate_food && !snake.body.empty()) 
+        if (ate_food) 
         {
-            snake.body.pop_back();
-        }
+            if (body_len < max_body_len) 
+            {
+                body_len++;
+            }
+        } 
         
-        snake.body.push_front(snake.head);
-        
-        switch (snake.direction) 
+        if (body_len > 0) 
         {
-            case 1:
-                snake.head.y -= block_size;
-                break;
-            case 2:
-                snake.head.x += block_size;
-                break;
-            case 3:
-                snake.head.y += block_size;
-                break;
-            case 4:
-                snake.head.x -= block_size;
-                break;
+            for (int i = body_len - 1; i > 0; --i) 
+            {
+                body[i] = body[i - 1];
+            }
+            body[0] = head;
         }
     }
 
-    void update(int num_envs, int snakes_per_env, int grid_w, int grid_h, int block_s, int num_foods,
+    void update(int num_envs, int snakes_per_env, int grid_w, int grid_h, int block_s, int num_foods, int max_body_len,
                 const int* actions,
-                std::vector<std::vector<SnakeData>>& snakes,
-                std::vector<std::vector<Point>>& foods,
+                int* alive, float* hp, int* directions, Point* heads, Point* bodies, int* body_lengths, int* scores, const int* roles,
+                Point* foods,
                 std::vector<std::mt19937>& rngs,
                 int* dones, int* events, int* killers, int* spatial_grid) 
     {
@@ -57,9 +51,8 @@ namespace PhysicsSystem
             for (int s = 0; s < snakes_per_env; ++s) 
             {
                 const int g_idx = e * snakes_per_env + s;
-                SnakeData& snake = snakes[e][s];
                 
-                if (!snake.is_alive) 
+                if (!alive[g_idx]) 
                 {
                     dones[g_idx] = 1; 
                     continue; 
@@ -69,42 +62,52 @@ namespace PhysicsSystem
                 switch (action) 
                 {
                     case 0:
-                        if (snake.direction != 3) snake.direction = 1;
+                        if (directions[g_idx] != 3) directions[g_idx] = 1;
                         break;
                     case 1:
-                        if (snake.direction != 4) snake.direction = 2;
+                        if (directions[g_idx] != 4) directions[g_idx] = 2;
                         break;
                     case 2:
-                        if (snake.direction != 1) snake.direction = 3;
+                        if (directions[g_idx] != 1) directions[g_idx] = 3;
                         break;
                     case 3:
-                        if (snake.direction != 2) snake.direction = 4;
+                        if (directions[g_idx] != 2) directions[g_idx] = 4;
                         break;
                 }
 
                 bool ate_food = false;
                 for (int f = 0; f < num_foods; ++f) 
                 {
-                    if (snake.head == foods[e][f]) 
+                    const int f_idx = e * num_foods + f;
+                    if (heads[g_idx] == foods[f_idx]) 
                     {
                         ate_food = true;
-                        snake.score += 1;
-                        snake.hp = std::min(snake.hp + 30.0f, max_hps[snake.role_idx]);
+                        scores[g_idx] += 1;
+                        hp[g_idx] = std::min(hp[g_idx] + 30.0f, max_hps[roles[g_idx]]);
                         events[g_idx] = 1;
                         
                         std::uniform_int_distribution<int> dx(0, grid_w - 1);
                         std::uniform_int_distribution<int> dy(0, grid_h - 1);
-                        foods[e][f] = {dx(rngs[e]) * block_s, dy(rngs[e]) * block_s};
+                        foods[f_idx] = {dx(rngs[e]) * block_s, dy(rngs[e]) * block_s};
                         break;
                     }
                 }
 
-                move_snake(snake, block_s, ate_food);
-                snake.hp -= 0.5f;
-
-                if (snake.hp <= 0.0f) 
+                move_snake(&bodies[g_idx * max_body_len], body_lengths[g_idx], heads[g_idx], max_body_len, block_s, directions[g_idx], ate_food);
+                
+                switch (directions[g_idx]) 
                 {
-                    snake.is_alive = false;
+                    case 1: heads[g_idx].y -= block_s; break;
+                    case 2: heads[g_idx].x += block_s; break;
+                    case 3: heads[g_idx].y += block_s; break;
+                    case 4: heads[g_idx].x -= block_s; break;
+                }
+
+                hp[g_idx] -= 0.5f;
+
+                if (hp[g_idx] <= 0.0f) 
+                {
+                    alive[g_idx] = 0;
                     dones[g_idx] = 1;
                     events[g_idx] = 3;
                 }
@@ -115,14 +118,17 @@ namespace PhysicsSystem
 
             for (int os = 0; os < snakes_per_env; ++os) 
             {
-                if (!snakes[e][os].is_alive) 
+                const int os_idx = e * snakes_per_env + os;
+                if (!alive[os_idx]) 
                 {
                     continue;
                 }
-                for (const auto& part : snakes[e][os].body) 
+                const int len = body_lengths[os_idx];
+                Point* body = &bodies[os_idx * max_body_len];
+                for (int i = 0; i < len; ++i) 
                 {
-                    const int cx = part.x / block_s; 
-                    const int cy = part.y / block_s;
+                    const int cx = body[i].x / block_s; 
+                    const int cy = body[i].y / block_s;
                     if (cx >= 0 && cx < grid_w && cy >= 0 && cy < grid_h) 
                     {
                         grid[cy * grid_w + cx] = os; 
@@ -132,12 +138,13 @@ namespace PhysicsSystem
 
             for (int os = snakes_per_env - 1; os >= 0; --os) 
             {
-                if (!snakes[e][os].is_alive) 
+                const int os_idx = e * snakes_per_env + os;
+                if (!alive[os_idx]) 
                 {
                     continue;
                 }
-                const int hx = snakes[e][os].head.x / block_s;
-                const int hy = snakes[e][os].head.y / block_s;
+                const int hx = heads[os_idx].x / block_s;
+                const int hy = heads[os_idx].y / block_s;
                 if (hx >= 0 && hx < grid_w && hy >= 0 && hy < grid_h) 
                 {
                     const int pos = hy * grid_w + hx;
@@ -152,20 +159,19 @@ namespace PhysicsSystem
 
             for (int s = 0; s < snakes_per_env; ++s) 
             {
-                SnakeData& snake = snakes[e][s];
-                if (!snake.is_alive) 
+                const int g_idx = e * snakes_per_env + s;
+                if (!alive[g_idx]) 
                 {
                     continue;
                 }
-                const int g_idx = e * snakes_per_env + s;
 
-                const int hx = snake.head.x / block_s;
-                const int hy = snake.head.y / block_s;
+                const int hx = heads[g_idx].x / block_s;
+                const int hy = heads[g_idx].y / block_s;
 
                 if (hx < 0 || hx >= grid_w || hy < 0 || hy >= grid_h) 
                 {
-                    snake.hp = 0.0f; 
-                    snake.is_alive = false;
+                    hp[g_idx] = 0.0f; 
+                    alive[g_idx] = 0;
                     dones[g_idx] = 1; 
                     events[g_idx] = 4;
                     continue;
@@ -176,8 +182,8 @@ namespace PhysicsSystem
                 
                 if (body_occupant == s) 
                 {
-                    snake.hp = 0.0f; 
-                    snake.is_alive = false;
+                    hp[g_idx] = 0.0f; 
+                    alive[g_idx] = 0;
                     dones[g_idx] = 1; 
                     events[g_idx] = 5;
                     continue;
@@ -207,13 +213,13 @@ namespace PhysicsSystem
 
                 for (int os : candidates) 
                 {
-                    SnakeData& other = snakes[e][os];
-                    if (!other.is_alive) 
+                    const int os_idx = e * snakes_per_env + os;
+                    if (!alive[os_idx]) 
                     {
                         continue;
                     }
 
-                    const bool head_to_head = (snake.head == other.head);
+                    const bool head_to_head = (heads[g_idx] == heads[os_idx]);
                     const bool head_to_body = (body_occupant == os);
 
                     if (head_to_head || head_to_body) 
@@ -223,25 +229,24 @@ namespace PhysicsSystem
                             continue;
                         }
                         
-                        other.hp -= damage_dealt[snake.role_idx];
-                        snake.hp -= (self_dmg[snake.role_idx] + victim_return[other.role_idx]);
+                        hp[os_idx] -= damage_dealt[roles[g_idx]];
+                        hp[g_idx] -= (self_dmg[roles[g_idx]] + victim_return[roles[os_idx]]);
                         
-                        const int os_idx = e * snakes_per_env + os;
-                        if (other.hp <= 0.0f && other.is_alive) 
+                        if (hp[os_idx] <= 0.0f && alive[os_idx]) 
                         {
-                            other.is_alive = false; 
+                            alive[os_idx] = 0; 
                             dones[os_idx] = 1;
                             events[os_idx] = 2; 
                             killers[os_idx] = s;
                         }
-                        if (snake.hp <= 0.0f && snake.is_alive) 
+                        if (hp[g_idx] <= 0.0f && alive[g_idx]) 
                         {
-                            snake.is_alive = false; 
+                            alive[g_idx] = 0; 
                             dones[g_idx] = 1;
                             events[g_idx] = 2; 
                             killers[g_idx] = os;
                         }
-                        if (!snake.is_alive) 
+                        if (!alive[g_idx]) 
                         {
                             break;
                         }

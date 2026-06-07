@@ -26,21 +26,29 @@ VecSnakeEngine::VecSnakeEngine(int num_envs, int num_snakes_per_env, int grid_w,
     global_state_size = (num_snakes_per_env * 4) + (num_foods * 2);
     max_body_length = 100;
 
-    obs_buffer.resize(num_envs * num_snakes_per_env * obs_size, 0.0f);
+    int total_snakes = num_envs * num_snakes_per_env;
+
+    obs_buffer.resize(total_snakes * obs_size, 0.0f);
     global_state_buffer.resize(num_envs * global_state_size, 0.0f);
-    rewards_buffer.resize(num_envs * num_snakes_per_env, 0.0f);
-    dones_buffer.resize(num_envs * num_snakes_per_env, 0);
-    render_buffer.resize(num_envs * num_snakes_per_env * max_body_length * 2, -1000);
-    scores_buffer.resize(num_envs * num_snakes_per_env, 0);
-    events_buffer.resize(num_envs * num_snakes_per_env, 0);
-    killers_buffer.resize(num_envs * num_snakes_per_env, -1);
+    rewards_buffer.resize(total_snakes, 0.0f);
+    dones_buffer.resize(total_snakes, 0);
+    render_buffer.resize(total_snakes * max_body_length * 2, -1000);
+    scores_buffer.resize(total_snakes, 0);
+    events_buffer.resize(total_snakes, 0);
+    killers_buffer.resize(total_snakes, -1);
     
     spatial_grid.resize(num_envs * grid_width * grid_height, -1);
-    roles_buffer.resize(num_envs * num_snakes_per_env, 0);
-    teams_buffer.resize(num_envs * num_snakes_per_env, 0);
 
-    env_snakes.resize(num_envs);
-    env_foods.resize(num_envs, std::vector<Point>(num_foods));
+    alive_buffer.resize(total_snakes, 0);
+    hp_buffer.resize(total_snakes, 0.0f);
+    roles_buffer.resize(total_snakes, 0);
+    teams_buffer.resize(total_snakes, 0);
+    directions_buffer.resize(total_snakes, 2);
+    heads_buffer.resize(total_snakes, {0, 0});
+    bodies_buffer.resize(total_snakes * max_body_length, {0, 0});
+    body_lengths_buffer.resize(total_snakes, 0);
+
+    foods_buffer.resize(num_envs * num_foods, {0, 0});
 
     reset_all();
 }
@@ -49,36 +57,38 @@ void VecSnakeEngine::reset_all()
 {
     constexpr float max_hps[3] = {100.0f, 150.0f, 200.0f};
 
-    for (int i = 0; i < num_envs; ++i) 
+    for (int e = 0; e < num_envs; ++e) 
     {
-        env_snakes[i].clear();
         for (int s = 0; s < num_snakes_per_env; ++s) 
         {
-            SnakeData snake;
-            snake.is_alive = true;
-            snake.role_idx = s % 3;
-            snake.team_idx = s / 3;
-            snake.hp = max_hps[snake.role_idx];
-            snake.score = 0;
-            snake.head = {((s * 2) % grid_width) * block_size, ((s * 2) / grid_width + 5) * block_size};
-            snake.direction = 2;
+            int g_idx = e * num_snakes_per_env + s;
+            
+            alive_buffer[g_idx] = 1;
+            roles_buffer[g_idx] = s % 3;
+            teams_buffer[g_idx] = s / 3;
+            hp_buffer[g_idx] = max_hps[roles_buffer[g_idx]];
+            scores_buffer[g_idx] = 0;
+            heads_buffer[g_idx] = {((s * 2) % grid_width) * block_size, ((s * 2) / grid_width + 5) * block_size};
+            directions_buffer[g_idx] = 2;
+            
+            body_lengths_buffer[g_idx] = 3;
             for (int b = 1; b <= 3; ++b) 
             {
-                snake.body.push_back({snake.head.x - b * block_size, snake.head.y});
+                bodies_buffer[g_idx * max_body_length + (b - 1)] = {heads_buffer[g_idx].x - b * block_size, heads_buffer[g_idx].y};
             }
-            env_snakes[i].push_back(snake);
-            
-            roles_buffer[i * num_snakes_per_env + s] = snake.role_idx;
-            teams_buffer[i * num_snakes_per_env + s] = snake.team_idx;
         }
         for (int f = 0; f < num_foods; ++f) 
         {
             std::uniform_int_distribution<int> dist_x(0, grid_width - 1);
             std::uniform_int_distribution<int> dist_y(0, grid_height - 1);
-            env_foods[i][f] = {dist_x(env_rngs[i]) * block_size, dist_y(env_rngs[i]) * block_size};
+            foods_buffer[e * num_foods + f] = {dist_x(env_rngs[e]) * block_size, dist_y(env_rngs[e]) * block_size};
         }
     }
-    RadarSystem::generate(num_envs, num_snakes_per_env, grid_width, grid_height, block_size, num_foods, env_snakes, env_foods, obs_buffer.data(), global_state_buffer.data(), spatial_grid.data());
+    
+    RadarSystem::generate(num_envs, num_snakes_per_env, grid_width, grid_height, block_size, num_foods, max_body_length,
+                          alive_buffer.data(), teams_buffer.data(), roles_buffer.data(), directions_buffer.data(), 
+                          hp_buffer.data(), heads_buffer.data(), bodies_buffer.data(), body_lengths_buffer.data(),
+                          foods_buffer.data(), obs_buffer.data(), global_state_buffer.data(), spatial_grid.data());
 }
 
 py::tuple VecSnakeEngine::step(py::array_t<int> actions_array) 
@@ -88,55 +98,55 @@ py::tuple VecSnakeEngine::step(py::array_t<int> actions_array)
     std::fill(rewards_buffer.begin(), rewards_buffer.end(), 0.0f);
     std::fill(dones_buffer.begin(), dones_buffer.end(), 0);
     std::fill(events_buffer.begin(), events_buffer.end(), 0);
-    std::fill(scores_buffer.begin(), scores_buffer.end(), 0);
+    // std::fill(scores_buffer.begin(), scores_buffer.end(), 0);
     std::fill(killers_buffer.begin(), killers_buffer.end(), -1);
 
-    PhysicsSystem::update(num_envs, num_snakes_per_env, grid_width, grid_height, block_size, num_foods, 
-                          actions_ptr, env_snakes, env_foods, env_rngs, 
-                          dones_buffer.data(), events_buffer.data(), killers_buffer.data(), spatial_grid.data());
+    PhysicsSystem::update(num_envs, num_snakes_per_env, grid_width, grid_height, block_size, num_foods, max_body_length,
+                          actions_ptr, alive_buffer.data(), hp_buffer.data(), directions_buffer.data(), 
+                          heads_buffer.data(), bodies_buffer.data(), body_lengths_buffer.data(), scores_buffer.data(), 
+                          roles_buffer.data(), foods_buffer.data(), env_rngs, dones_buffer.data(), events_buffer.data(), 
+                          killers_buffer.data(), spatial_grid.data());
 
-    RewardSystem::calculate(num_envs, num_snakes_per_env, roles_buffer.data(), teams_buffer.data(), events_buffer.data(), killers_buffer.data(), reward_config, rewards_buffer.data());
+    RewardSystem::calculate(num_envs, num_snakes_per_env, roles_buffer.data(), teams_buffer.data(), events_buffer.data(), 
+                            killers_buffer.data(), reward_config, rewards_buffer.data());
 
-    RadarSystem::generate(num_envs, num_snakes_per_env, grid_width, grid_height, block_size, num_foods, env_snakes, env_foods, obs_buffer.data(), global_state_buffer.data(), spatial_grid.data());
-
-    for (int e = 0; e < num_envs; ++e) 
-    {
-        for (int s = 0; s < num_snakes_per_env; ++s) 
-        {
-            scores_buffer[e * num_snakes_per_env + s] = env_snakes[e][s].score;
-        }
-    }
+    RadarSystem::generate(num_envs, num_snakes_per_env, grid_width, grid_height, block_size, num_foods, max_body_length,
+                          alive_buffer.data(), teams_buffer.data(), roles_buffer.data(), directions_buffer.data(), 
+                          hp_buffer.data(), heads_buffer.data(), bodies_buffer.data(), body_lengths_buffer.data(),
+                          foods_buffer.data(), obs_buffer.data(), global_state_buffer.data(), spatial_grid.data());
 
     std::fill(render_buffer.begin(), render_buffer.end(), -1000);
     for (int e = 0; e < num_envs; ++e) 
     {
         for (int s = 0; s < num_snakes_per_env; ++s) 
         {
-            SnakeData& snake = env_snakes[e][s];
-            if (snake.is_alive) 
+            const int g_idx = e * num_snakes_per_env + s;
+            if (alive_buffer[g_idx]) 
             {
-                int base_idx = (e * num_snakes_per_env + s) * max_body_length * 2;
-                for (size_t i = 0; i < snake.body.size() && i < max_body_length; ++i) 
+                int base_idx = g_idx * max_body_length * 2;
+                int len = body_lengths_buffer[g_idx];
+                for (int i = 0; i < len; ++i) 
                 {
-                    render_buffer[base_idx + i * 2] = snake.body[i].x;
-                    render_buffer[base_idx + i * 2 + 1] = snake.body[i].y;
+                    render_buffer[base_idx + i * 2] = bodies_buffer[g_idx * max_body_length + i].x;
+                    render_buffer[base_idx + i * 2 + 1] = bodies_buffer[g_idx * max_body_length + i].y;
                 }
             } 
             else 
             {
                 std::uniform_int_distribution<int> dist_x(2, grid_width - 3);
                 std::uniform_int_distribution<int> dist_y(2, grid_height - 3);
-                snake.head = {dist_x(env_rngs[e]) * block_size, dist_y(env_rngs[e]) * block_size};
-                snake.body.clear();
+                heads_buffer[g_idx] = {dist_x(env_rngs[e]) * block_size, dist_y(env_rngs[e]) * block_size};
+                
+                body_lengths_buffer[g_idx] = 3;
                 for (int b = 1; b <= 3; ++b) 
                 {
-                    snake.body.push_back({snake.head.x - b * block_size, snake.head.y});
+                    bodies_buffer[g_idx * max_body_length + (b - 1)] = {heads_buffer[g_idx].x - b * block_size, heads_buffer[g_idx].y};
                 }
-                snake.direction = 2;
+                directions_buffer[g_idx] = 2;
                 constexpr float max_hps[3] = {100.0f, 150.0f, 200.0f};
-                snake.hp = max_hps[snake.role_idx];
-                snake.score = 0;
-                snake.is_alive = true;
+                hp_buffer[g_idx] = max_hps[roles_buffer[g_idx]];
+                scores_buffer[g_idx] = 0;
+                alive_buffer[g_idx] = 1;
             }
         }
     }

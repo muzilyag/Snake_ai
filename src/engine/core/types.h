@@ -1,6 +1,5 @@
 #ifndef TYPES_H
 #define TYPES_H
-#include <deque>
 
 struct Point 
 {
@@ -10,18 +9,6 @@ struct Point
     { 
         return x == o.x && y == o.y; 
     }
-};
-
-struct SnakeData 
-{
-    bool is_alive;
-    int role_idx;
-    int team_idx;
-    float hp;
-    int score;
-    int direction;
-    Point head;
-    std::deque<Point> body;
 };
 
 struct RewardConfig 
