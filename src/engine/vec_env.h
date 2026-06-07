@@ -1,4 +1,5 @@
-#pragma once
+#ifndef VEC_ENV_H
+#define VEC_ENV_H
 #include <pybind11/pybind11.h>
 #include <pybind11/numpy.h>
 #include <vector>
@@ -7,8 +8,8 @@
 
 namespace py = pybind11;
 
-class VecSnakeEngine {
-private:
+class VecSnakeEngine 
+{
     int num_envs;
     int num_snakes_per_env;
     int obs_size;
@@ -40,3 +41,5 @@ public:
     void reset_all();
     py::tuple step(py::array_t<int> actions_array);
 };
+
+#endif

@@ -1,4 +1,5 @@
-#pragma once
+#ifndef SNAKE_H
+#define SNAKE_H
 #include <vector>
 #include <cmath>
 
@@ -27,3 +28,5 @@ struct Snake
 
 float get_distance(const Point& a, const Point& b);
 void move_snake(Snake& snake, int block_size, bool grow);
+
+#endif

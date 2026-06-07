@@ -70,19 +70,28 @@ namespace RadarSystem
                 else if (snake.direction == 3) check_dirs = {{0, block_s}, {-block_s, 0}, {block_s, 0}};
                 else check_dirs = {{-block_s, 0}, {0, -block_s}, {0, block_s}};
 
-                for (const auto& d : check_dirs) {
+                for (const auto& d : check_dirs) 
+                {
                     int px = (snake.head.x + d.x) / block_s;
                     int py = (snake.head.y + d.y) / block_s;
                     bool is_wall = (px < 0 || px >= grid_w || py < 0 || py >= grid_h);
                     bool is_friend = false;
                     int enemy_role = -1;
 
-                    if (!is_wall) {
+                    if (!is_wall) 
+                    {
                         int occ = grid[py * grid_w + px]; 
-                        if (occ != -1) {
+                        if (occ != -1) 
+                        {
                             const SnakeData& other = snakes[e][occ];
-                            if (other.team_idx == snake.team_idx) is_friend = true;
-                            else enemy_role = other.role_idx;
+                            if (other.team_idx == snake.team_idx) 
+                            {
+                                is_friend = true;
+                            }
+                            else
+                            {
+                                enemy_role = other.role_idx;
+                            }
                         }
                     }
 
@@ -99,9 +108,13 @@ namespace RadarSystem
 
                 float min_dist = std::numeric_limits<float>::max();
                 Point closest_food = snake.head;
-                for (const auto& f : foods[e]) {
+                for (const auto& f : foods[e]) 
+                {
                     float d = get_distance(snake.head, f);
-                    if (d < min_dist) { min_dist = d; closest_food = f; }
+                    if (d < min_dist) 
+                    { 
+                        min_dist = d; closest_food = f; 
+                    }
                 }
 
                 obs[o_idx++] = (closest_food.x < snake.head.x) ? 1.0f : 0.0f;
@@ -113,12 +126,19 @@ namespace RadarSystem
                 float min_ally_dist = std::numeric_limits<float>::max();
                 float min_enemy_dist = std::numeric_limits<float>::max();
 
-                for (const auto& other : snakes[e]) {
-                    if (!other.is_alive || &other == &snake) continue;
+                for (const auto& other : snakes[e]) 
+                {
+                    if (!other.is_alive || &other == &snake) 
+                    {
+                        continue;
+                    }
                     float d = get_distance(snake.head, other.head);
-                    if (other.team_idx == snake.team_idx && d < min_ally_dist) {
+                    if (other.team_idx == snake.team_idx && d < min_ally_dist) 
+                    {
                         min_ally_dist = d; closest_ally = other.head;
-                    } else if (other.team_idx != snake.team_idx && d < min_enemy_dist) {
+                    } 
+                    else if (other.team_idx != snake.team_idx && d < min_enemy_dist) 
+                    {
                         min_enemy_dist = d; closest_enemy = other.head;
                     }
                 }
@@ -135,14 +155,16 @@ namespace RadarSystem
             }
 
             int g_idx = e * global_size;
-            for (int s = 0; s < snakes_per_env; ++s) {
+            for (int s = 0; s < snakes_per_env; ++s) 
+            {
                 const SnakeData& snake = snakes[e][s];
                 global[g_idx++] = snake.is_alive ? 1.0f : 0.0f;
                 global[g_idx++] = static_cast<float>(snake.head.x);
                 global[g_idx++] = static_cast<float>(snake.head.y);
                 global[g_idx++] = snake.hp;
             }
-            for (int f = 0; f < num_foods; ++f) {
+            for (int f = 0; f < num_foods; ++f) 
+            {
                 global[g_idx++] = static_cast<float>(foods[e][f].x);
                 global[g_idx++] = static_cast<float>(foods[e][f].y);
             }
