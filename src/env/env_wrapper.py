@@ -58,16 +58,34 @@ class CppVecEnv:
                 p.get('kill_harvester', 0.0), p.get('kill_hunter', 0.0), p.get('kill_defender', 0.0),
                 p.get('friendly_fire', 0.0)
             ])
+
+        total_snakes = self.num_envs * self.num_snakes
+        obs_size = 28
+        global_state_size = (self.num_snakes * 4) + (self.config.food_count * 2)
+        max_body_length = 100
+
+        self.obs_np = np.zeros((total_snakes, obs_size), dtype=np.float32)
+        self.global_state_np = np.zeros((self.num_envs, global_state_size), dtype=np.float32)
+        self.rewards_np = np.zeros(total_snakes, dtype=np.float32)
+        self.dones_np = np.zeros(total_snakes, dtype=np.int32)
+        self.render_np = np.full((self.num_envs, self.num_snakes, max_body_length, 2), -1000, dtype=np.int32)
+        self.scores_np = np.zeros(total_snakes, dtype=np.int32)
+        self.events_np = np.zeros(total_snakes, dtype=np.int32)
+        self.killers_np = np.full(total_snakes, -1, dtype=np.int32)
             
         self.engine = snake_cpp.VecSnakeEngine(
             num_envs, self.num_snakes, config.grid_width, config.grid_height, 
-            config.block_size, config.food_count, flat_cfg
+            config.block_size, config.food_count, flat_cfg,
+            self.obs_np, self.global_state_np, self.rewards_np,
+            self.dones_np, self.render_np, self.scores_np,
+            self.events_np, self.killers_np
         )
         
         self.last_global_states = None
         self.main_env = self
         self.iteration = 0
         self.foods = []
+        self.actions_flat = np.zeros(total_snakes, dtype=np.int32)
 
     def _sync_render_state(self, render_np=None):
         if self.last_global_states is None: return
@@ -104,30 +122,29 @@ class CppVecEnv:
     def reset(self) -> List[Dict[str, np.ndarray]]:
         self.engine.reset_all()
         self.iteration = 0
-        actions_zeros = np.zeros(self.num_envs * self.num_snakes, dtype=np.int32)
+        self.actions_flat.fill(0)
         
-        obs_np, global_state_np, _, dones_np, render_np, scores_np, events_np, killers_np = self.engine.step(actions_zeros)
-        self.last_global_states = global_state_np
-        self._sync_render_state(render_np)
+        self.engine.step(self.actions_flat)
+        self.last_global_states = self.global_state_np
+        self._sync_render_state(self.render_np)
         
         obs_list = []
         for e in range(self.num_envs):
-            obs_dict = {a_id: obs_np[e * self.num_snakes + s] for s, a_id in enumerate(self.agent_ids)}
+            obs_dict = {a_id: self.obs_np[e * self.num_snakes + s].copy() for s, a_id in enumerate(self.agent_ids)}
             obs_list.append(obs_dict)
         return obs_list
 
     def step(self, actions_list: List[Dict[str, int]], render: bool = False):
         self.iteration += 1
-        actions_flat = np.zeros(self.num_envs * self.num_snakes, dtype=np.int32)
         for e in range(self.num_envs):
             for s, agent_id in enumerate(self.agent_ids):
-                actions_flat[e * self.num_snakes + s] = actions_list[e].get(agent_id, 0)
+                self.actions_flat[e * self.num_snakes + s] = actions_list[e].get(agent_id, 0)
                 
-        obs_np, global_state_np, rew_np, don_np, render_np, sco_np, ev_np, _ = self.engine.step(actions_flat)
-        self.last_global_states = global_state_np
+        self.engine.step(self.actions_flat)
+        self.last_global_states = self.global_state_np
         
         if render:
-            self._sync_render_state(render_np)
+            self._sync_render_state(self.render_np)
             
         obs_all, rew_all, don_all, inf_all = [], [], [], []
         ev_map = {0: 'move', 1: 'food', 2: 'death', 3: 'starve', 4: 'wall', 5: 'self'}
@@ -136,15 +153,15 @@ class CppVecEnv:
             obs_dict, rew_dict, don_dict, inf_dict = {}, {}, {}, {}
             for s, agent_id in enumerate(self.agent_ids):
                 idx = e * self.num_snakes + s
-                obs_dict[agent_id] = obs_np[idx]
-                rew_dict[agent_id] = float(rew_np[idx])
-                don_dict[agent_id] = bool(don_np[idx])
+                obs_dict[agent_id] = self.obs_np[idx].copy()
+                rew_dict[agent_id] = float(self.rewards_np[idx])
+                don_dict[agent_id] = bool(self.dones_np[idx])
                 
-                ev_code = int(ev_np[idx])
+                ev_code = int(self.events_np[idx])
                 role = self.snakes[agent_id].role
                 inf_dict[agent_id] = {
-                    'score': int(sco_np[idx]),
-                    'hp': float(global_state_np[e][s * 4 + 3]),
+                    'score': int(self.scores_np[idx]),
+                    'hp': float(self.global_state_np[e][s * 4 + 3]),
                     'max_hp': 150.0 if role == "Hunter" else (200.0 if role == "Defender" else 100.0),
                     'event': ev_map.get(ev_code, 'move')
                 }
@@ -162,4 +179,4 @@ class CppVecEnv:
         return obs_all, rew_all, don_all, inf_all
 
     def get_global_states(self) -> List[np.ndarray]:
-        return [self.last_global_states[e] for e in range(self.num_envs)]
+        return [self.last_global_states[e].copy() for e in range(self.num_envs)]

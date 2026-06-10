@@ -22,14 +22,15 @@ class VecSnakeEngine
 
     RewardConfig reward_config;
 
-    std::vector<float> obs_buffer;
-    std::vector<float> global_state_buffer;
-    std::vector<float> rewards_buffer;
-    std::vector<int> dones_buffer;
-    std::vector<int> render_buffer;
-    std::vector<int> scores_buffer;
-    std::vector<int> events_buffer;
-    std::vector<int> killers_buffer;
+    float* obs_ptr;
+    float* global_state_ptr;
+    float* rewards_ptr;
+    int* dones_ptr;
+    int* render_ptr;
+    int* scores_ptr;
+    int* events_ptr;
+    int* killers_ptr;
+
     std::vector<int> spatial_grid;
 
     std::vector<int> alive_buffer;
@@ -45,9 +46,12 @@ class VecSnakeEngine
     std::vector<std::mt19937> env_rngs;
 
 public:
-    VecSnakeEngine(int num_envs, int num_snakes_per_env, int grid_w, int grid_h, int block_s, int num_foods, std::vector<float> flat_config);
+    VecSnakeEngine(int num_envs, int num_snakes_per_env, int grid_w, int grid_h, int block_s, int num_foods, std::vector<float> flat_config,
+                   py::array_t<float> obs_arr, py::array_t<float> global_arr, py::array_t<float> rewards_arr,
+                   py::array_t<int> dones_arr, py::array_t<int> render_arr, py::array_t<int> scores_arr,
+                   py::array_t<int> events_arr, py::array_t<int> killers_arr);
     void reset_all();
-    py::tuple step(py::array_t<int> actions_array);
+    void step(py::array_t<int> actions_array);
 };
 
 #endif
