@@ -31,8 +31,9 @@ class SnakePlotter:
         self.max_iter: float = float('inf')
         
         self.fig, self.ax = plt.subplots(figsize=(14, 8))
-        plt.subplots_adjust(left=0.25, bottom=0.2, right=0.95, top=0.9)
-        
+        # если нужна легенда ВНЕ графика
+        # plt.subplots_adjust(left=0.22, bottom=0.2, right=0.85, top=0.9) 
+        plt.subplots_adjust(left=0.22, bottom=0.2, right=0.97, top=0.9) 
         self._init_widgets()
         self._draw_plot()
         
@@ -70,7 +71,7 @@ class SnakePlotter:
             return tuple(c / 255.0 for c in team_conf.color)
         return tuple(np.random.rand(3).tolist())
 
-    def _calculate_trend(self, ys: np.ndarray, window_fraction: float = 0.1) -> tuple[np.ndarray, int]:
+    def _calculate_trend(self, ys: np.ndarray, window_fraction: float = 0.01) -> tuple[np.ndarray, int]:
         if len(ys) < 5:
             return ys, 1
         
@@ -124,7 +125,8 @@ class SnakePlotter:
             has_data = True
         
         if has_data:
-            self.ax.legend(loc='upper left', bbox_to_anchor=(1, 1))
+            # self.ax.legend(loc='upper left', bbox_to_anchor=(1, 1), fontsize=9)
+            self.ax.legend(loc='best', ncol=2, fontsize=9, framealpha=0.85)
         
         self.fig.canvas.draw_idle()
 
